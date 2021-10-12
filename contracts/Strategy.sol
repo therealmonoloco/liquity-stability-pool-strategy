@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0
-// Feel free to change the license, but this is what we use
-
-// Feel free to change this version of Solidity. We support >=0.6.0 <0.7.0;
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
@@ -17,13 +14,21 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
+import "../interfaces/liquity/IPriceFeed.sol";
+import "../interfaces/liquity/IStabilityPool.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
+
+    address internal constant LQTY = "0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D";
+
+    address internal constant LUSD = "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0";
+
+    IStabilityPool internal constant stabilityPool = "0x66017D22b0f8556afDd19FC67041899Eb65a21bb";
+
+    IPriceFeed internal constant priceFeed = "0x4c517D4e2C851CA76d7eC94B805269Df0f2201De";
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -35,8 +40,7 @@ contract Strategy is BaseStrategy {
     // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
 
     function name() external view override returns (string memory) {
-        // Add your own name here, suggestion e.g. "StrategyCreamYFI"
-        return "Strategy<ProtocolName><TokenType>";
+        return "StrategyLiquityStabilityPoolLUSD";
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
