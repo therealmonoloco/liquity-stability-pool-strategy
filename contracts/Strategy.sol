@@ -17,6 +17,7 @@ import {
 
 import "../interfaces/liquity/IPriceFeed.sol";
 import "../interfaces/liquity/IStabilityPool.sol";
+import "../interfaces/uniswap/IAndreOnChainOracle.sol";
 import "../interfaces/uniswap/ISwapRouter.sol";
 
 contract Strategy is BaseStrategy {
@@ -44,6 +45,10 @@ contract Strategy is BaseStrategy {
     ISwapRouter internal constant router =
         ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
+    // Use Uniswap v3 TWAP to fetch LQTY price in ETH
+    IAndreOnChainOracle internal constant twapOracle =
+        IAndreOnChainOracle(0x0F1f5A87f99f0918e6C81F16E59F3518698221Ff);
+
     // Wrapped Ether - Used for swaps routing
     IERC20 internal constant WETH =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -64,16 +69,18 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 ethBalance =
-            address(this).balance +
-                stabilityPool.getDepositorETHGain(address(this));
+        uint256 lqtyInETH =
+            totalLQTYRewards().mul(1e18).div(
+                twapOracle.ethToAsset(1e18, address(LQTY), 60)
+            );
+        uint256 ethBalanceIncludingRewards = totalETHBalance().add(lqtyInETH);
 
-        // We ignore LQTY rewards when reporting estimated assets
-        // We also assume for the sake of the estimate that LUSD keeps its 1:1 peg to USD
         return
-            balanceOfWant()
-                .add(stabilityPool.getCompoundedLUSDDeposit(address(this)))
-                .add(ethBalance.mul(priceFeed.lastGoodPrice()).div(1e18));
+            totalLUSDBalance().add(
+                ethBalanceIncludingRewards.mul(priceFeed.lastGoodPrice()).div(
+                    1e18
+                )
+            );
     }
 
     function prepareReturn(uint256 _debtOutstanding)
