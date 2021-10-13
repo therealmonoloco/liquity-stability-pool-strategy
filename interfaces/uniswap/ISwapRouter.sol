@@ -76,4 +76,8 @@ interface ISwapRouter is IUniswapV3SwapCallback {
         external
         payable
         returns (uint256 amountIn);
+
+    // Taken from https://soliditydeveloper.com/uniswap3
+    // Manually added to the interface
+    function refundETH() external payable;
 }

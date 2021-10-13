@@ -44,6 +44,12 @@ contract Strategy is BaseStrategy {
     ISwapRouter internal constant router =
         ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
+    // Wrapped Ether - Used for swaps routing
+    IERC20 internal constant WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    // DAI - Used for swaps routing
+    IERC20 internal constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
+
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
         // maxReportDelay = 6300;
@@ -56,16 +62,16 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        // QUESTION: should we include ETH/LQTY balances?
-        // loose LUSD + LUSD in stability pool + ETH/LQTY gains + ETH/LQTY balance
+        uint256 ethBalance = address(this).balance + stabilityPool.getDepositorETHGain(address(this));
+        
+        // We ignore LQTY rewards when reporting estimated assets
+        // We also assume for the sake of the estimate that LUSD keeps its 1:1 peg to USD
         return
-            balanceOfWant().add(
+            balanceOfWant()
+            .add(
                 stabilityPool.getCompoundedLUSDDeposit(address(this))
-            );
-
-        // LQTY.balanceOf(address(this))
-        // stabilityPool.getDepositorETHGain(address(this));
-        // stabilityPool.getFrontEndLQTYGain(address(this));
+            )
+            .add(ethBalance.mul(priceFeed.lastGoodPrice()).div(1e18));
     }
 
     function prepareReturn(uint256 _debtOutstanding)
@@ -82,7 +88,8 @@ contract Strategy is BaseStrategy {
         // Claim rewards and sell them for more LUSD
         _claimRewards();
 
-        uint256 totalAssetsAfterProfit = estimatedTotalAssets();
+        // At this point all ETH and LQTY has been converted to LUSD
+        uint256 totalAssetsAfterProfit = balanceOfWant().add(stabilityPool.getCompoundedLUSDDeposit(address(this)));
 
         _profit = totalAssetsAfterProfit > totalDebt
             ? totalAssetsAfterProfit.sub(totalDebt)
@@ -133,7 +140,11 @@ contract Strategy is BaseStrategy {
         );
         stabilityPool.withdrawFromSP(amountToWithdraw);
 
-        // QUESTION: on withdraw we get ETH + LQTY - should we attempt to convert them to LUSD if we have a loss?
+        // After withdrawing from the stability pool it could happen that we have
+        // enough LQTY / ETH to cover a loss before reporting it.
+        // However, doing a swap at this point could make withdrawals insecure
+        // and front-runnable, so we assume LUSD that cannot be returned is a 
+        // realized loss.
         uint256 looseWant = balanceOfWant();
         if (_amountNeeded > looseWant) {
             _liquidatedAmount = looseWant;
@@ -195,17 +206,47 @@ contract Strategy is BaseStrategy {
 
     function _checkAllowance(
         address _contract,
-        address _token,
+        IERC20 _token,
         uint256 _amount
     ) internal {
-        if (IERC20(_token).allowance(address(this), _contract) < _amount) {
-            IERC20(_token).safeApprove(_contract, 0);
-            IERC20(_token).safeApprove(_contract, type(uint256).max);
+        if (_token.allowance(address(this), _contract) < _amount) {
+            _token.safeApprove(_contract, 0);
+            _token.safeApprove(_contract, type(uint256).max);
         }
     }
 
+
     function _claimRewards() internal {
-        // TODO: claim and swap
+        // Withdraw minimum amount to force LQTY and ETH to be claimed
+        stabilityPool.withdrawFromSP(1);
+
+        _checkAllowance(address(router), LQTY, LQTY.balanceOf(address(this)));
+
+        // Swap LQTY for ETH on univ3        
+        uint256 deadline = block.timestamp + 60;
+        address tokenIn = address(LQTY);
+        address tokenOut = address(WETH);
+        uint24 fee = 3000;
+        address recipient = address(this);
+        uint256 amountIn = LQTY.balanceOf(address(this));
+        uint256 amountOutMinimum = 0;
+        uint160 sqrtPriceLimitX96 = 0;
+    
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
+            tokenIn,
+            tokenOut,
+            fee,
+            recipient,
+            deadline,
+            amountIn,
+            amountOutMinimum,
+            sqrtPriceLimitX96
+        );
+        
+        router.exactInputSingle(params);
+        router.refundETH();
+
+        // Swap ETH for LUSD in curve
     }
 
     // ----------------- PUBLIC BALANCES -----------------
@@ -216,11 +257,59 @@ contract Strategy is BaseStrategy {
 
     // ----------------- TOKEN CONVERSIONS -----------------
 
-    function _sellAForB(
-        uint256 _amount,
-        address tokenA,
-        address tokenB
-    ) internal {
-        // TODO: do swap
+    function _sellLQTYforDAI() internal {
+        _checkAllowance(address(router), LQTY, LQTY.balanceOf(address(this)));
+
+        bytes memory path =
+                abi.encodePacked(
+                    address(LQTY),  // LQTY-ETH 0.3%
+                    uint24(3000),
+                    address(WETH),           // ETH-DAI 0.3%
+                    uint24(3000),
+                    address(DAI)
+                );
+
+        router.exactInput(ISwapRouter.ExactInputParams(
+                    path,
+                    address(this),
+                    now,
+                    LQTY.balanceOf(address(this)),
+                    0
+                ));
     }
+
+    function _sellETHforDAI() internal {
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
+            address(WETH),   // tokenIn
+            address(DAI),    // tokenOut
+            3000,    // 0.3% fee
+            address(this),  // recipient
+            now,   // deadline
+            address(this).balance, // amountIn
+            0, // amountOut
+            0 // sqrtPriceLimitX96
+        );
+        
+        router.exactInputSingle{ value: address(this).balance }(params);
+        router.refundETH();
+    }
+
+    function _sellDAIforLUSD() internal {
+        _checkAllowance(address(router), DAI, DAI.balanceOf(address(this)));
+
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
+            address(DAI),   // tokenIn
+            address(LUSD),    // tokenOut
+            500,    // 0.05% fee
+            address(this),  // recipient
+            now,   // deadline
+            DAI.balanceOf(address(this)), // amountIn
+            0, // amountOut
+            0 // sqrtPriceLimitX96
+        );
+        router.exactInputSingle(params);
+    }
+
+    // Important to receive ETH
+    receive() payable external {}
 }
