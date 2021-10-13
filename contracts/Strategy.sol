@@ -45,10 +45,12 @@ contract Strategy is BaseStrategy {
         ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
     // Wrapped Ether - Used for swaps routing
-    IERC20 internal constant WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20 internal constant WETH =
+        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     // DAI - Used for swaps routing
-    IERC20 internal constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
+    IERC20 internal constant DAI =
+        IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
 
     constructor(address _vault) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
@@ -62,16 +64,16 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 ethBalance = address(this).balance + stabilityPool.getDepositorETHGain(address(this));
-        
+        uint256 ethBalance =
+            address(this).balance +
+                stabilityPool.getDepositorETHGain(address(this));
+
         // We ignore LQTY rewards when reporting estimated assets
         // We also assume for the sake of the estimate that LUSD keeps its 1:1 peg to USD
         return
             balanceOfWant()
-            .add(
-                stabilityPool.getCompoundedLUSDDeposit(address(this))
-            )
-            .add(ethBalance.mul(priceFeed.lastGoodPrice()).div(1e18));
+                .add(stabilityPool.getCompoundedLUSDDeposit(address(this)))
+                .add(ethBalance.mul(priceFeed.lastGoodPrice()).div(1e18));
     }
 
     function prepareReturn(uint256 _debtOutstanding)
@@ -116,7 +118,10 @@ contract Strategy is BaseStrategy {
         // Use zero address for frontend as we are interacting with the contracts directly
         uint256 wantBalance = balanceOfWant();
         if (wantBalance > _debtOutstanding) {
-            stabilityPool.provideToSP(wantBalance.sub(_debtOutstanding), address(0));
+            stabilityPool.provideToSP(
+                wantBalance.sub(_debtOutstanding),
+                address(0)
+            );
         }
     }
 
@@ -148,7 +153,7 @@ contract Strategy is BaseStrategy {
         // After withdrawing from the stability pool it could happen that we have
         // enough LQTY / ETH to cover a loss before reporting it.
         // However, doing a swap at this point could make withdrawals insecure
-        // and front-runnable, so we assume LUSD that cannot be returned is a 
+        // and front-runnable, so we assume LUSD that cannot be returned is a
         // realized loss.
         uint256 looseWant = balanceOfWant();
         if (_amountNeeded > looseWant) {
@@ -188,20 +193,6 @@ contract Strategy is BaseStrategy {
         returns (address[] memory)
     {}
 
-    /**
-     * @notice
-     *  Provide an accurate conversion from `_amtInWei` (denominated in wei)
-     *  to `want` (using the native decimal characteristics of `want`).
-     * @dev
-     *  Care must be taken when working with decimals to assure that the conversion
-     *  is compatible. As an example:
-     *
-     *      given 1e17 wei (0.1 ETH) as input, and want is USDC (6 decimals),
-     *      with USDC/ETH = 1800, this should give back 1800000000 (180 USDC)
-     *
-     * @param _amtInWei The amount (in wei/1e-18 ETH) to convert to `want`
-     * @return The amount in `want` of `_amtInEth` converted to `want`
-     **/
     function ethToWant(uint256 _amtInWei)
         public
         view
@@ -209,8 +200,7 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256)
     {
-        // TODO create an accurate price oracle
-        return _amtInWei;
+        return _amtInWei.mul(priceFeed.lastGoodPrice()).div(1e18);
     }
 
     function _checkAllowance(
@@ -223,7 +213,6 @@ contract Strategy is BaseStrategy {
             _token.safeApprove(_contract, type(uint256).max);
         }
     }
-
 
     function _claimRewards() internal {
         // Withdraw minimum amount to force LQTY and ETH to be claimed
@@ -254,18 +243,24 @@ contract Strategy is BaseStrategy {
     }
 
     function totalLUSDBalance() public view returns (uint256) {
-        return LUSD.balanceOf(address(this))
-            .add(stabilityPool.getCompoundedLUSDDeposit(address(this)));
+        return
+            LUSD.balanceOf(address(this)).add(
+                stabilityPool.getCompoundedLUSDDeposit(address(this))
+            );
     }
 
     function totalLQTYRewards() public view returns (uint256) {
-        return LQTY.balanceOf(address(this))
-            .add(stabilityPool.getDepositorLQTYGain(address(this)));
+        return
+            LQTY.balanceOf(address(this)).add(
+                stabilityPool.getDepositorLQTYGain(address(this))
+            );
     }
 
     function totalETHBalance() public view returns (uint256) {
-        return address(this).balance
-            .add(stabilityPool.getDepositorETHGain(address(this)));
+        return
+            address(this).balance.add(
+                stabilityPool.getDepositorETHGain(address(this))
+            );
     }
 
     // ----------------- TOKEN CONVERSIONS -----------------
@@ -274,55 +269,59 @@ contract Strategy is BaseStrategy {
         _checkAllowance(address(router), LQTY, LQTY.balanceOf(address(this)));
 
         bytes memory path =
-                abi.encodePacked(
-                    address(LQTY),  // LQTY-ETH 0.3%
-                    uint24(3000),
-                    address(WETH),           // ETH-DAI 0.3%
-                    uint24(3000),
-                    address(DAI)
-                );
+            abi.encodePacked(
+                address(LQTY), // LQTY-ETH 0.3%
+                uint24(3000),
+                address(WETH), // ETH-DAI 0.3%
+                uint24(3000),
+                address(DAI)
+            );
 
-        router.exactInput(ISwapRouter.ExactInputParams(
-                    path,
-                    address(this),
-                    now,
-                    LQTY.balanceOf(address(this)),
-                    0
-                ));
+        router.exactInput(
+            ISwapRouter.ExactInputParams(
+                path,
+                address(this),
+                now,
+                LQTY.balanceOf(address(this)),
+                0
+            )
+        );
     }
 
     function _sellETHforDAI() internal {
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
-            address(WETH),   // tokenIn
-            address(DAI),    // tokenOut
-            3000,    // 0.3% fee
-            address(this),  // recipient
-            now,   // deadline
-            address(this).balance, // amountIn
-            0, // amountOut
-            0 // sqrtPriceLimitX96
-        );
-        
-        router.exactInputSingle{ value: address(this).balance }(params);
+        ISwapRouter.ExactInputSingleParams memory params =
+            ISwapRouter.ExactInputSingleParams(
+                address(WETH), // tokenIn
+                address(DAI), // tokenOut
+                3000, // 0.3% fee
+                address(this), // recipient
+                now, // deadline
+                address(this).balance, // amountIn
+                0, // amountOut
+                0 // sqrtPriceLimitX96
+            );
+
+        router.exactInputSingle{value: address(this).balance}(params);
         router.refundETH();
     }
 
     function _sellDAIforLUSD() internal {
         _checkAllowance(address(router), DAI, DAI.balanceOf(address(this)));
 
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
-            address(DAI),   // tokenIn
-            address(LUSD),    // tokenOut
-            500,    // 0.05% fee
-            address(this),  // recipient
-            now,   // deadline
-            DAI.balanceOf(address(this)), // amountIn
-            0, // amountOut
-            0 // sqrtPriceLimitX96
-        );
+        ISwapRouter.ExactInputSingleParams memory params =
+            ISwapRouter.ExactInputSingleParams(
+                address(DAI), // tokenIn
+                address(LUSD), // tokenOut
+                500, // 0.05% fee
+                address(this), // recipient
+                now, // deadline
+                DAI.balanceOf(address(this)), // amountIn
+                0, // amountOut
+                0 // sqrtPriceLimitX96
+            );
         router.exactInputSingle(params);
     }
 
     // Important to receive ETH
-    receive() payable external {}
+    receive() external payable {}
 }
