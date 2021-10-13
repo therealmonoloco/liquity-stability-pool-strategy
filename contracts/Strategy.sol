@@ -220,39 +220,30 @@ contract Strategy is BaseStrategy {
         // Withdraw minimum amount to force LQTY and ETH to be claimed
         stabilityPool.withdrawFromSP(1);
 
-        _checkAllowance(address(router), LQTY, LQTY.balanceOf(address(this)));
+        // Convert LQTY rewards to DAI
+        _sellLQTYforDAI();
 
-        // Swap LQTY for ETH on univ3        
-        uint256 deadline = block.timestamp + 60;
-        address tokenIn = address(LQTY);
-        address tokenOut = address(WETH);
-        uint24 fee = 3000;
-        address recipient = address(this);
-        uint256 amountIn = LQTY.balanceOf(address(this));
-        uint256 amountOutMinimum = 0;
-        uint160 sqrtPriceLimitX96 = 0;
-    
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams(
-            tokenIn,
-            tokenOut,
-            fee,
-            recipient,
-            deadline,
-            amountIn,
-            amountOutMinimum,
-            sqrtPriceLimitX96
-        );
-        
-        router.exactInputSingle(params);
-        router.refundETH();
+        // Convert ETH obtained from liquidations to DAI
+        _sellETHforDAI();
 
-        // Swap ETH for LUSD in curve
+        // Use DAI-LUSD 0.05% pool in Uniswap V3 to get LUSD
+        _sellDAIforLUSD();
     }
 
     // ----------------- PUBLIC BALANCES -----------------
 
     function balanceOfWant() public view returns (uint256) {
         return want.balanceOf(address(this));
+    }
+
+    function totalLQTYRewards() public view returns (uint256) {
+        return LQTY.balanceOf(address(this))
+            .add(stabilityPool.getDepositorLQTYGain(address(this)));
+    }
+
+    function totalETHBalance() public view returns (uint256) {
+        return address(this).balance
+            .add(stabilityPool.getDepositorETHGain(address(this)));
     }
 
     // ----------------- TOKEN CONVERSIONS -----------------
