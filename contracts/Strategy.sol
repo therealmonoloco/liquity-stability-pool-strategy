@@ -140,7 +140,10 @@ contract Strategy is BaseStrategy {
             amountToWithdraw,
             stabilityPool.getCompoundedLUSDDeposit(address(this))
         );
-        stabilityPool.withdrawFromSP(amountToWithdraw);
+
+        if (amountToWithdraw > 0) {
+            stabilityPool.withdrawFromSP(amountToWithdraw);
+        }
 
         // After withdrawing from the stability pool it could happen that we have
         // enough LQTY / ETH to cover a loss before reporting it.
@@ -166,6 +169,10 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
+        if (stabilityPool.getCompoundedLUSDDeposit(address(this)) <= 0) {
+            return;
+        }
+
         // Withdraw entire LUSD balance from Stability Pool
         // ETH + LQTY gains should be harvested before migrating
         // `migrate` will automatically forward all `want` in this strategy to the new one
@@ -220,16 +227,24 @@ contract Strategy is BaseStrategy {
 
     function _claimRewards() internal {
         // Withdraw minimum amount to force LQTY and ETH to be claimed
-        stabilityPool.withdrawFromSP(1);
+        if (stabilityPool.getCompoundedLUSDDeposit(address(this)) > 0) {
+            stabilityPool.withdrawFromSP(1);
+        }
 
         // Convert LQTY rewards to DAI
-        _sellLQTYforDAI();
+        if (LQTY.balanceOf(address(this)) > 0) {
+            _sellLQTYforDAI();
+        }
 
         // Convert ETH obtained from liquidations to DAI
-        _sellETHforDAI();
+        if (address(this).balance > 0) {
+            _sellETHforDAI();
+        }
 
         // Use DAI-LUSD 0.05% pool in Uniswap V3 to get LUSD
-        _sellDAIforLUSD();
+        if (DAI.balanceOf(address(this)) > 0) {
+            _sellDAIforLUSD();
+        }
     }
 
     // ----------------- PUBLIC BALANCES -----------------
