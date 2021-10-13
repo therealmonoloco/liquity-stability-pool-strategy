@@ -83,13 +83,14 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
+        // How much do we owe to the LUSD vault?
         uint256 totalDebt = vault.strategies(address(this)).totalDebt;
 
-        // Claim rewards and sell them for more LUSD
+        // Claim LQTY/ETH and sell them for more LUSD
         _claimRewards();
 
         // At this point all ETH and LQTY has been converted to LUSD
-        uint256 totalAssetsAfterProfit = balanceOfWant().add(stabilityPool.getCompoundedLUSDDeposit(address(this)));
+        uint256 totalAssetsAfterProfit = totalLUSDBalance();
 
         _profit = totalAssetsAfterProfit > totalDebt
             ? totalAssetsAfterProfit.sub(totalDebt)
@@ -113,8 +114,9 @@ contract Strategy is BaseStrategy {
     function adjustPosition(uint256 _debtOutstanding) internal override {
         // Provide any leftover balance to the stability pool
         // Use zero address for frontend as we are interacting with the contracts directly
-        if (balanceOfWant() > 0) {
-            stabilityPool.provideToSP(balanceOfWant(), address(0));
+        uint256 wantBalance = balanceOfWant();
+        if (wantBalance > _debtOutstanding) {
+            stabilityPool.provideToSP(wantBalance.sub(_debtOutstanding), address(0));
         }
     }
 
@@ -234,6 +236,11 @@ contract Strategy is BaseStrategy {
 
     function balanceOfWant() public view returns (uint256) {
         return want.balanceOf(address(this));
+    }
+
+    function totalLUSDBalance() public view returns (uint256) {
+        return LUSD.balanceOf(address(this))
+            .add(stabilityPool.getCompoundedLUSDDeposit(address(this)));
     }
 
     function totalLQTYRewards() public view returns (uint256) {
