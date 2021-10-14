@@ -7,7 +7,7 @@ import "./Strategy.sol";
 // The purpose of this wrapper contract is to expose internal functions
 // that may contain application logic and therefore need to be tested
 contract TestStrategy is Strategy {
-  
+
       constructor(address _vault) public Strategy(_vault) {}
 
       function sellLQTYforDAI() public {
@@ -20,5 +20,9 @@ contract TestStrategy is Strategy {
 
       function sellDAIforLUSD() public {
         _sellDAIforLUSD();
+      }
+
+      function claimRewards() public {
+        _claimRewards();
       }
 }
