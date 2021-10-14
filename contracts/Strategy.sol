@@ -64,6 +64,9 @@ contract Strategy is BaseStrategy {
         // debtThreshold = 0;
     }
 
+    // Strategy should be able to receive ETH
+    receive() external payable {}
+
     function name() external view override returns (string memory) {
         return "StrategyLiquityStabilityPoolLUSD";
     }
@@ -210,6 +213,35 @@ contract Strategy is BaseStrategy {
         return _amtInWei.mul(priceFeed.lastGoodPrice()).div(1e18);
     }
 
+    // ----------------- PUBLIC BALANCES -----------------
+
+    function balanceOfWant() public view returns (uint256) {
+        return want.balanceOf(address(this));
+    }
+
+    function totalLUSDBalance() public view returns (uint256) {
+        return
+            LUSD.balanceOf(address(this)).add(
+                stabilityPool.getCompoundedLUSDDeposit(address(this))
+            );
+    }
+
+    function totalLQTYBalance() public view returns (uint256) {
+        return
+            LQTY.balanceOf(address(this)).add(
+                stabilityPool.getDepositorLQTYGain(address(this))
+            );
+    }
+
+    function totalETHBalance() public view returns (uint256) {
+        return
+            address(this).balance.add(
+                stabilityPool.getDepositorETHGain(address(this))
+            );
+    }
+
+    // ----------------- SUPPORT FUNCTIONS ----------
+
     function _checkAllowance(
         address _contract,
         IERC20 _token,
@@ -241,33 +273,6 @@ contract Strategy is BaseStrategy {
         if (DAI.balanceOf(address(this)) > 0) {
             _sellDAIforLUSD();
         }
-    }
-
-    // ----------------- PUBLIC BALANCES -----------------
-
-    function balanceOfWant() public view returns (uint256) {
-        return want.balanceOf(address(this));
-    }
-
-    function totalLUSDBalance() public view returns (uint256) {
-        return
-            LUSD.balanceOf(address(this)).add(
-                stabilityPool.getCompoundedLUSDDeposit(address(this))
-            );
-    }
-
-    function totalLQTYBalance() public view returns (uint256) {
-        return
-            LQTY.balanceOf(address(this)).add(
-                stabilityPool.getDepositorLQTYGain(address(this))
-            );
-    }
-
-    function totalETHBalance() public view returns (uint256) {
-        return
-            address(this).balance.add(
-                stabilityPool.getDepositorETHGain(address(this))
-            );
     }
 
     // ----------------- TOKEN CONVERSIONS -----------------
@@ -328,7 +333,4 @@ contract Strategy is BaseStrategy {
             );
         router.exactInputSingle(params);
     }
-
-    // Important to receive ETH
-    receive() external payable {}
 }
