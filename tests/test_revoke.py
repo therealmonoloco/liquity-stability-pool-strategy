@@ -54,6 +54,7 @@ def test_revoke_with_lqty_profit(
     assert vault.strategies(strategy).dict()["debtRatio"] == 0
     assert vault.strategies(strategy).dict()["totalDebt"] == 0
 
+
 def test_revoke_with_eth_profit(
     token, vault, strategy, token_whale, gov, borrow_token, borrow_whale, yvault,
 ):

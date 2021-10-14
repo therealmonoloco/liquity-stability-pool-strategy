@@ -60,6 +60,36 @@ def amount(accounts, token, user):
 
 
 @pytest.fixture
+def lusd():
+    yield Contract("0x5f98805A4E8be255a32880FDeC7F6728C6568bA0")
+
+
+@pytest.fixture
+def lusd_whale(accounts):
+    yield accounts.at("0x31F8Cc382c9898b273eff4e0b7626a6987C846E8", force=True)
+
+
+@pytest.fixture
+def dai():
+    yield Contract("0x6B175474E89094C44Da98b954EedeAC495271d0F")
+
+
+@pytest.fixture
+def dai_whale(accounts):
+    yield accounts.at("0x028171bCA77440897B824Ca71D1c56caC55b68A3", force=True)
+
+
+@pytest.fixture
+def lqty():
+    yield Contract("0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D")
+
+
+@pytest.fixture
+def lqty_whale(accounts):
+    yield accounts.at("0xfEE47986A4B9083d7dB1829BeEd6f88A91DD4338", force=True)
+
+
+@pytest.fixture
 def weth():
     token_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
     yield Contract(token_address)
@@ -85,6 +115,14 @@ def vault(pm, gov, rewards, guardian, management, token):
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov):
     strategy = strategist.deploy(Strategy, vault)
+    strategy.setKeeper(keeper)
+    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    yield strategy
+
+
+@pytest.fixture
+def test_strategy(strategist, keeper, vault, TestStrategy, gov):
+    strategy = strategist.deploy(TestStrategy, vault)
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
