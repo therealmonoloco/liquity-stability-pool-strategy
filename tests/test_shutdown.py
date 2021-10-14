@@ -1,6 +1,3 @@
-# TODO: Add tests that show proper operation of this strategy through "emergencyExit"
-#       Make sure to demonstrate the "worst case losses" as well as the time it takes
-
 from brownie import ZERO_ADDRESS
 import pytest
 
@@ -17,6 +14,7 @@ def test_vault_shutdown_can_withdraw(
         token.transfer(ZERO_ADDRESS, token.balanceOf(user), {"from": user})
 
     # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
     strategy.harvest()
     chain.sleep(3600 * 7)
     chain.mine(1)
@@ -40,6 +38,7 @@ def test_basic_shutdown(
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
     strategy.harvest()
     chain.mine(100)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
@@ -49,6 +48,7 @@ def test_basic_shutdown(
     chain.mine(1)
 
     # Harvest 2: Realize profit
+    chain.sleep(1)
     strategy.harvest()
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
@@ -56,8 +56,10 @@ def test_basic_shutdown(
     ## Set emergency
     strategy.setEmergencyExit({"from": strategist})
 
+    chain.sleep(1)
     strategy.harvest()  ## Remove funds from strategy
 
+    assert vault.strategies(strategy).dict()["debtRatio"] == 0
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0
     assert token.balanceOf(strategy) == 0
     assert token.balanceOf(vault) >= amount  ## The vault has all funds
-    ## NOTE: May want to tweak this based on potential loss during migration
