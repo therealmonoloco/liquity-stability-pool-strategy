@@ -11,12 +11,10 @@ def test_revoke_strategy_from_vault(
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # In order to pass this tests, you will need to implement prepareReturn.
-    # TODO: uncomment the following lines.
-    # vault.revokeStrategy(strategy.address, {"from": gov})
-    # chain.sleep(1)
-    # strategy.harvest()
-    # assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
+    vault.revokeStrategy(strategy.address, {"from": gov})
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 
 def test_revoke_strategy_from_strategy(
@@ -33,3 +31,46 @@ def test_revoke_strategy_from_strategy(
     chain.sleep(1)
     strategy.harvest()
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
+
+
+def test_revoke_with_lqty_profit(
+    token, vault, strategy, token_whale, gov, borrow_token, borrow_whale, yvault,
+):
+    assert 1 == 0
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(20 * (10 ** token.decimals()), {"from": token_whale})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+
+    # Send some profit to yvault
+    borrow_token.transfer(
+        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    vault.revokeStrategy(strategy, {"from": gov})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
+    assert vault.strategies(strategy).dict()["debtRatio"] == 0
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0
+
+def test_revoke_with_eth_profit(
+    token, vault, strategy, token_whale, gov, borrow_token, borrow_whale, yvault,
+):
+    assert 1 == 0
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(20 * (10 ** token.decimals()), {"from": token_whale})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+
+    # Send some profit to yvault
+    borrow_token.transfer(
+        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    vault.revokeStrategy(strategy, {"from": gov})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
+    assert vault.strategies(strategy).dict()["debtRatio"] == 0
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0
