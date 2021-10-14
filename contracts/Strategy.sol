@@ -25,10 +25,6 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    // Liquity USD pegged stablecoin
-    IERC20 internal constant LUSD =
-        IERC20(0x5f98805A4E8be255a32880FDeC7F6728C6568bA0);
-
     // LQTY rewards accrue to Stability Providers who deposit LUSD to the Stability Pool
     IERC20 internal constant LQTY =
         IERC20(0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D);
@@ -221,7 +217,7 @@ contract Strategy is BaseStrategy {
 
     function totalLUSDBalance() public view returns (uint256) {
         return
-            LUSD.balanceOf(address(this)).add(
+            balanceOfWant().add(
                 stabilityPool.getCompoundedLUSDDeposit(address(this))
             );
     }
@@ -323,7 +319,7 @@ contract Strategy is BaseStrategy {
         ISwapRouter.ExactInputSingleParams memory params =
             ISwapRouter.ExactInputSingleParams(
                 address(DAI), // tokenIn
-                address(LUSD), // tokenOut
+                address(want), // tokenOut
                 500, // 0.05% fee
                 address(this), // recipient
                 now, // deadline
