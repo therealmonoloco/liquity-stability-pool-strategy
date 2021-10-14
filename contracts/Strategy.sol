@@ -68,10 +68,18 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 lqtyInETH =
-            totalLQTYBalance().mul(1e18).div(
-                twapOracle.ethToAsset(1e18, address(LQTY), 60)
-            );
+        uint256 lqtyInETH;
+
+        try twapOracle.ethToAsset(1e18, address(LQTY), 60) returns (
+            uint256 amountOut
+        ) {
+            if (amountOut > 0) {
+                lqtyInETH = totalLQTYBalance().mul(1e18).div(amountOut);
+            }
+        } catch (bytes memory) {
+            lqtyInETH = 0;
+        }
+
         uint256 ethBalanceIncludingRewards = totalETHBalance().add(lqtyInETH);
 
         return
