@@ -70,7 +70,7 @@ contract Strategy is BaseStrategy {
 
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 lqtyInETH =
-            totalLQTYRewards().mul(1e18).div(
+            totalLQTYBalance().mul(1e18).div(
                 twapOracle.ethToAsset(1e18, address(LQTY), 60)
             );
         uint256 ethBalanceIncludingRewards = totalETHBalance().add(lqtyInETH);
@@ -256,7 +256,7 @@ contract Strategy is BaseStrategy {
             );
     }
 
-    function totalLQTYRewards() public view returns (uint256) {
+    function totalLQTYBalance() public view returns (uint256) {
         return
             LQTY.balanceOf(address(this)).add(
                 stabilityPool.getDepositorLQTYGain(address(this))
