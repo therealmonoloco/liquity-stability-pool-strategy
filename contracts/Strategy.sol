@@ -53,11 +53,11 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant DAI =
         IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
 
+    // Wether we want to read LQTY price from Uniswap V3 pool or not
+    bool public twapEnabled;
+
     constructor(address _vault) public BaseStrategy(_vault) {
-        // You can set these parameters on deployment to whatever you want
-        // maxReportDelay = 6300;
-        // profitFactor = 100;
-        // debtThreshold = 0;
+        twapEnabled = true;
     }
 
     // Strategy should be able to receive ETH
@@ -70,6 +70,14 @@ contract Strategy is BaseStrategy {
         msg.sender.transfer(address(this).balance);
     }
 
+    // Set wether we want to read LQTY price from Uniswap V3 pool or not
+    function setTwapEnabled(bool _twapEnabled)
+        external
+        onlyEmergencyAuthorized
+    {
+        twapEnabled = _twapEnabled;
+    }
+
     function name() external view override returns (string memory) {
         return "StrategyLiquityStabilityPoolLUSD";
     }
@@ -77,14 +85,16 @@ contract Strategy is BaseStrategy {
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 lqtyInETH;
 
-        try twapOracle.ethToAsset(1e18, address(LQTY), 60) returns (
-            uint256 amountOut
-        ) {
-            if (amountOut > 0) {
-                lqtyInETH = totalLQTYBalance().mul(1e18).div(amountOut);
+        if (twapEnabled) {
+            try twapOracle.ethToAsset(1e18, address(LQTY), 60) returns (
+                uint256 amountOut
+            ) {
+                if (amountOut > 0) {
+                    lqtyInETH = totalLQTYBalance().mul(1e18).div(amountOut);
+                }
+            } catch (bytes memory) {
+                lqtyInETH = 0;
             }
-        } catch (bytes memory) {
-            lqtyInETH = 0;
         }
 
         uint256 ethBalanceIncludingRewards = totalETHBalance().add(lqtyInETH);
