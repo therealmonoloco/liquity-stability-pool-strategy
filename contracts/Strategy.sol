@@ -63,6 +63,13 @@ contract Strategy is BaseStrategy {
     // Strategy should be able to receive ETH
     receive() external payable {}
 
+    // Allow governance to claim any outstanding ETH balance
+    // This is done to provide additional flexibility in case the strategy
+    // is migrated since this is ETH and not WETH, so gov cannot sweep it
+    function swallowETH() external onlyGovernance {
+        msg.sender.transfer(address(this).balance);
+    }
+
     function name() external view override returns (string memory) {
         return "StrategyLiquityStabilityPoolLUSD";
     }
