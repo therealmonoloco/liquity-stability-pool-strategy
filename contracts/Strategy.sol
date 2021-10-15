@@ -53,7 +53,7 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant DAI =
         IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
 
-    // Wether we want to read LQTY price from Uniswap V3 pool or not
+    // Whether we want to read LQTY price from Uniswap V3 pool or not
     bool public twapEnabled;
 
     constructor(address _vault) public BaseStrategy(_vault) {
@@ -70,7 +70,7 @@ contract Strategy is BaseStrategy {
         msg.sender.transfer(address(this).balance);
     }
 
-    // Set wether we want to read LQTY price from Uniswap V3 pool or not
+    // Set whether we want to read LQTY price from Uniswap V3 pool or not
     function setTwapEnabled(bool _twapEnabled)
         external
         onlyEmergencyAuthorized
