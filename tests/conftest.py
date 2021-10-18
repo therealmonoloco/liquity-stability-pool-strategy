@@ -44,6 +44,11 @@ def keeper(accounts):
 
 
 @pytest.fixture
+def healthCheck():
+    yield Contract("0xDDCea799fF1699e98EDF118e0629A974Df7DF012")
+
+
+@pytest.fixture
 def token():
     token_address = "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
     yield Contract(token_address)
@@ -116,6 +121,7 @@ def vault(pm, gov, rewards, guardian, management, token):
 def strategy(strategist, keeper, vault, Strategy, gov):
     strategy = strategist.deploy(Strategy, vault)
     strategy.setKeeper(keeper)
+    strategy.setDoHealthCheck(True, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
@@ -124,6 +130,7 @@ def strategy(strategist, keeper, vault, Strategy, gov):
 def test_strategy(strategist, keeper, vault, TestStrategy, gov):
     strategy = strategist.deploy(TestStrategy, vault)
     strategy.setKeeper(keeper)
+    strategy.setDoHealthCheck(True, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 

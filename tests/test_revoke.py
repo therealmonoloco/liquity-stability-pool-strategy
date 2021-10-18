@@ -59,7 +59,7 @@ def test_revoke_with_eth_profit(
     token, vault, strategy, lusd_whale, weth, gov, accounts
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": lusd_whale})
-    vault.deposit(200_000 * (10 ** token.decimals()), {"from": lusd_whale})
+    vault.deposit(700_000 * (10 ** token.decimals()), {"from": lusd_whale})
     chain.sleep(1)
     strategy.harvest()
 

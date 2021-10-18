@@ -126,6 +126,7 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     lqty,
     lqty_whale,
     weth,
+    gov,
     RELATIVE_APPROX,
 ):
     amount = 50_000 * (10 ** token.decimals())
@@ -152,9 +153,13 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     # Send LUSD away so it is not in the strategy's balance
     token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
 
+    # Turn off healthcheck for this one as the loss is going to be big
+    strategy.setDoHealthCheck(False, {"from": gov})
+
     # Harvest 2: Realize loss
     chain.sleep(1)
     strategy.harvest()
+
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
 
@@ -175,6 +180,7 @@ def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
     lqty,
     lqty_whale,
     weth,
+    gov,
     RELATIVE_APPROX,
 ):
     amount = 50_000 * (10 ** token.decimals())
@@ -203,9 +209,13 @@ def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
     # Send LUSD away so it is not in the strategy's balance
     token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
 
+    # Turn off healthcheck for this one
+    strategy.setDoHealthCheck(False, {"from": gov})
+
     # Harvest 2: Loss in LUSD should be turned into profit by selling LQTY
     chain.sleep(1)
     strategy.harvest()
+
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
 

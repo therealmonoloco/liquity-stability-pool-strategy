@@ -17,7 +17,7 @@ def test_direct_transfer_increments_profits(
     assert initialProfit == 0
 
     token.approve(vault.address, 2 ** 256 - 1, {"from": lusd_whale})
-    vault.deposit(1000 * (10 ** token.decimals()), {"from": lusd_whale})
+    vault.deposit(100_000 * (10 ** token.decimals()), {"from": lusd_whale})
     chain.sleep(1)
     strategy.harvest()
 
@@ -55,7 +55,7 @@ def test_direct_transfer_with_actual_lqty_profits(
     assert initialProfit == 0
 
     token.approve(vault, 2 ** 256 - 1, {"from": lusd_whale})
-    vault.deposit(10_000 * (10 ** token.decimals()), {"from": lusd_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": lusd_whale})
 
     chain.sleep(1)
     strategy.harvest()
@@ -88,7 +88,7 @@ def test_direct_transfer_with_actual_eth_profits(
     assert initialProfit == 0
 
     token.approve(vault, 2 ** 256 - 1, {"from": lusd_whale})
-    vault.deposit(10_000 * (10 ** token.decimals()), {"from": lusd_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": lusd_whale})
 
     chain.sleep(1)
     strategy.harvest()
