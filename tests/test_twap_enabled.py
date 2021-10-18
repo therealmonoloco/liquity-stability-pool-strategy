@@ -2,8 +2,8 @@ from brownie import reverts
 
 
 def test_twap_setter_acl(strategy, gov, strategist, management, keeper, guardian, user):
-    # Check that default is set to True
-    assert strategy.twapEnabled() == True
+    # Check that default is set to False
+    assert strategy.twapEnabled() == False
 
     strategy.setTwapEnabled(False, {"from": gov})
     assert strategy.twapEnabled() == False

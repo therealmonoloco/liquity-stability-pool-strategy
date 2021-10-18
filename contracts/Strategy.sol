@@ -57,7 +57,7 @@ contract Strategy is BaseStrategy {
     bool public twapEnabled;
 
     constructor(address _vault) public BaseStrategy(_vault) {
-        twapEnabled = true;
+        twapEnabled = false;
     }
 
     // Strategy should be able to receive ETH
@@ -84,10 +84,7 @@ contract Strategy is BaseStrategy {
     // This could be useful to trigger LQTY / ETH transfers without harvesting.
     // `provideToSP` will revert if not enough funds are provided so no need
     // to have an additional check.
-    function depositLUSD(uint256 _amount)
-        external
-        onlyEmergencyAuthorized
-    {
+    function depositLUSD(uint256 _amount) external onlyEmergencyAuthorized {
         stabilityPool.provideToSP(_amount, address(0));
     }
 
@@ -96,10 +93,7 @@ contract Strategy is BaseStrategy {
     // or bypassing any scenario where strategy funds are locked (e.g: bad accounting).
     // `withdrawFromSP` will revert if there are no deposits. If _amount is larger
     // than the deposit it will return all remaining balance.
-    function withdrawLUSD(uint256 _amount)
-        external
-        onlyEmergencyAuthorized
-    {
+    function withdrawLUSD(uint256 _amount) external onlyEmergencyAuthorized {
         stabilityPool.withdrawFromSP(_amount);
     }
 
@@ -150,25 +144,21 @@ contract Strategy is BaseStrategy {
         _claimRewards();
 
         // At this point all ETH and LQTY has been converted to LUSD
-        uint256 totalAssetsAfterProfit = totalLUSDBalance();
+        uint256 totalAssetsAfterClaim = estimatedTotalAssets();
 
-        _profit = totalAssetsAfterProfit > totalDebt
-            ? totalAssetsAfterProfit.sub(totalDebt)
-            : 0;
-
-        uint256 _amountFreed;
-        (_amountFreed, _loss) = liquidatePosition(
-            _debtOutstanding.add(_profit)
-        );
-        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-
-        if (_loss > _profit) {
-            _loss = _loss.sub(_profit);
-            _profit = 0;
-        } else {
-            _profit = _profit.sub(_loss);
+        if (totalAssetsAfterClaim > totalDebt) {
+            _profit = totalAssetsAfterClaim.sub(totalDebt);
             _loss = 0;
+        } else {
+            _profit = 0;
+            _loss = totalDebt.sub(totalAssetsAfterClaim);
         }
+
+        // We cannot incur in additional losses during liquidatePosition because they
+        // have already been accounted for in the check above, so we ignore them
+        uint256 _amountFreed;
+        (_amountFreed, ) = liquidatePosition(_debtOutstanding.add(_profit));
+        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
