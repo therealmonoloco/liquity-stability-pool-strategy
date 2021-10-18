@@ -122,7 +122,6 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     vault,
     strategy,
     accounts,
-    user,
     lusd_whale,
     lqty,
     lqty_whale,
@@ -164,3 +163,54 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     assert vault.totalAssets() < amount
     assert vault.strategies(strategy).dict()["totalLoss"] > 0
     assert vault.strategies(strategy).dict()["totalGain"] == 0
+
+
+def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
+    chain,
+    token,
+    vault,
+    strategy,
+    accounts,
+    lusd_whale,
+    lqty,
+    lqty_whale,
+    weth,
+    RELATIVE_APPROX,
+):
+    amount = 50_000 * (10 ** token.decimals())
+
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": lusd_whale})
+    vault.deposit(amount, {"from": lusd_whale})
+    assert token.balanceOf(vault.address) == amount
+
+    # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # Simulate ETH price went further down than the 10% premium we got
+    # We are going to send 1 eth and 1500 lqty to the strategy but
+    # perform an external withdraw of 10000 LUSD
+    # LQTY should be worth more than LUSD loss, ending in LUSD profit after swap
+    before_pps = vault.pricePerShare()
+    accounts.at(weth, force=True).transfer(strategy, Wei("1 ether"))
+    lqty.transfer(strategy, 1500 * (10 ** lqty.decimals()), {"from": lqty_whale})
+    strategy.withdrawLUSD(
+        10_000 * (10 ** token.decimals()), {"from": strategy.strategist()}
+    )
+
+    # Send LUSD away so it is not in the strategy's balance
+    token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
+
+    # Harvest 2: Loss in LUSD should be turned into profit by selling LQTY
+    chain.sleep(1)
+    strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+
+    assert strategy.estimatedTotalAssets() == amount
+    assert vault.pricePerShare() > before_pps
+    assert vault.totalAssets() > amount
+    assert vault.strategies(strategy).dict()["totalLoss"] == 0
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
