@@ -63,6 +63,8 @@ contract Strategy is BaseStrategy {
     // Strategy should be able to receive ETH
     receive() external payable {}
 
+    // ----------------- SETTERS & EXTERNAL CONFIGURATION -----------------
+
     // Allow governance to claim any outstanding ETH balance
     // This is done to provide additional flexibility in case the strategy
     // is migrated since this is ETH and not WETH, so gov cannot sweep it
@@ -77,6 +79,31 @@ contract Strategy is BaseStrategy {
     {
         twapEnabled = _twapEnabled;
     }
+
+    // Wrapper around `provideToSP` to allow forcing a deposit externally
+    // This could be useful to trigger LQTY / ETH transfers without harvesting.
+    // `provideToSP` will revert if not enough funds are provided so no need
+    // to have an additional check.
+    function depositLUSD(uint256 _amount)
+        external
+        onlyEmergencyAuthorized
+    {
+        stabilityPool.provideToSP(_amount, address(0));
+    }
+
+    // Wrapper around `withdrawFromSP` to allow forcing a withdrawal externally.
+    // This could be useful to trigger LQTY / ETH transfers without harvesting
+    // or bypassing any scenario where strategy funds are locked (e.g: bad accounting).
+    // `withdrawFromSP` will revert if there are no deposits. If _amount is larger
+    // than the deposit it will return all remaining balance.
+    function withdrawLUSD(uint256 _amount)
+        external
+        onlyEmergencyAuthorized
+    {
+        stabilityPool.withdrawFromSP(_amount);
+    }
+
+    // ----------------- BASE STRATEGY FUNCTIONS -----------------
 
     function name() external view override returns (string memory) {
         return "StrategyLiquityStabilityPoolLUSD";
