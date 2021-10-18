@@ -150,25 +150,22 @@ contract Strategy is BaseStrategy {
         _claimRewards();
 
         // At this point all ETH and LQTY has been converted to LUSD
-        uint256 totalAssetsAfterProfit = totalLUSDBalance();
+        uint256 totalAssetsAfterClaim = estimatedTotalAssets();
 
-        _profit = totalAssetsAfterProfit > totalDebt
-            ? totalAssetsAfterProfit.sub(totalDebt)
-            : 0;
+        if (totalAssetsAfterClaim > totalDebt) {
+            _profit = totalAssetsAfterClaim.sub(totalDebt);
+        } else {
+            _loss = totalDebt.sub(totalAssetsAfterClaim);
+        }
 
         uint256 _amountFreed;
-        (_amountFreed, _loss) = liquidatePosition(
+        uint256 _withdrawalLoss;
+
+        // withdrawal loss
+        (_amountFreed, _withdrawalLoss) = liquidatePosition(
             _debtOutstanding.add(_profit)
         );
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-
-        if (_loss > _profit) {
-            _loss = _loss.sub(_profit);
-            _profit = 0;
-        } else {
-            _profit = _profit.sub(_loss);
-            _loss = 0;
-        }
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {

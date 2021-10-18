@@ -1,6 +1,6 @@
 import pytest
 
-from brownie import reverts
+from brownie import chain, reverts, Wei
 
 
 def test_operation(chain, token, vault, strategy, user, amount, RELATIVE_APPROX):
@@ -114,3 +114,53 @@ def test_triggers(chain, gov, vault, strategy, token, amount, user):
 
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)
+
+
+def test_loss_in_lusd_due_to_eth_price_declining_faster(
+    chain,
+    token,
+    vault,
+    strategy,
+    accounts,
+    user,
+    lusd_whale,
+    lqty,
+    lqty_whale,
+    weth,
+    RELATIVE_APPROX,
+):
+    amount = 50_000 * (10 ** token.decimals())
+
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": lusd_whale})
+    vault.deposit(amount, {"from": lusd_whale})
+    assert token.balanceOf(vault.address) == amount
+
+    # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # Simulate loss. We are going to send 1 eth and 10 lqty to the strategy but
+    # perform an external withdraw of 20000 LUSD
+    before_pps = vault.pricePerShare()
+    accounts.at(weth, force=True).transfer(strategy, Wei("1 ether"))
+    lqty.transfer(strategy, 10 * (10 ** lqty.decimals()), {"from": lqty_whale})
+    strategy.withdrawLUSD(
+        20_000 * (10 ** token.decimals()), {"from": strategy.strategist()}
+    )
+
+    # Send LUSD away so it is not in the strategy's balance
+    token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
+
+    # Harvest 2: Realize loss
+    chain.sleep(1)
+    strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+
+    assert strategy.estimatedTotalAssets() < amount
+    assert vault.pricePerShare() < before_pps
+    assert vault.totalAssets() < amount
+    assert vault.strategies(strategy).dict()["totalLoss"] > 0
+    assert vault.strategies(strategy).dict()["totalGain"] == 0
