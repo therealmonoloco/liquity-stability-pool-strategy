@@ -18,7 +18,6 @@ import {
 import "../interfaces/curve/IStableSwapExchange.sol";
 import "../interfaces/liquity/IPriceFeed.sol";
 import "../interfaces/liquity/IStabilityPool.sol";
-import "../interfaces/uniswap/IAndreOnChainOracle.sol";
 import "../interfaces/uniswap/ISwapRouter.sol";
 
 contract Strategy is BaseStrategy {
@@ -42,10 +41,6 @@ contract Strategy is BaseStrategy {
     ISwapRouter internal constant router =
         ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
-    // Use Uniswap v3 TWAP to fetch LQTY price in ETH
-    IAndreOnChainOracle internal constant twapOracle =
-        IAndreOnChainOracle(0x0F1f5A87f99f0918e6C81F16E59F3518698221Ff);
-
     // LUSD3CRV Curve Metapool
     IStableSwapExchange internal constant curvePool =
         IStableSwapExchange(0xEd279fDD11cA84bEef15AF5D39BB4d4bEE23F0cA);
@@ -58,16 +53,10 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant DAI =
         IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
 
-    // Whether we want to read LQTY price from Uniswap V3 pool or not
-    bool public twapEnabled;
-
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
     bool public convertDAItoLUSDonCurve;
 
     constructor(address _vault) public BaseStrategy(_vault) {
-        // Ignore LQTY rewards in estimatedTotalAssets by default
-        twapEnabled = false;
-
         // Use curve as default route to swap DAI for LUSD
         convertDAItoLUSDonCurve = true;
     }
@@ -78,18 +67,10 @@ contract Strategy is BaseStrategy {
     // ----------------- SETTERS & EXTERNAL CONFIGURATION -----------------
 
     // Allow governance to claim any outstanding ETH balance
-    // This is done to provide additional flexibility in case the strategy
-    // is migrated since this is ETH and not WETH, so gov cannot sweep it
+    // This is done to provide additional flexibility since this is ETH and not WETH
+    // so gov cannot sweep it
     function swallowETH() external onlyGovernance {
         msg.sender.transfer(address(this).balance);
-    }
-
-    // Set whether we want to read LQTY price from Uniswap V3 pool or not
-    function setTwapEnabled(bool _twapEnabled)
-        external
-        onlyEmergencyAuthorized
-    {
-        twapEnabled = _twapEnabled;
     }
 
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
@@ -124,27 +105,10 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 lqtyInETH;
-
-        if (twapEnabled) {
-            try twapOracle.ethToAsset(1e18, address(LQTY), 60) returns (
-                uint256 amountOut
-            ) {
-                if (amountOut > 0) {
-                    lqtyInETH = totalLQTYBalance().mul(1e18).div(amountOut);
-                }
-            } catch (bytes memory) {
-                lqtyInETH = 0;
-            }
-        }
-
-        uint256 ethBalanceIncludingRewards = totalETHBalance().add(lqtyInETH);
-
+        // 1 LUSD = 1 USD *guaranteed* (TM)
         return
             totalLUSDBalance().add(
-                ethBalanceIncludingRewards.mul(priceFeed.lastGoodPrice()).div(
-                    1e18
-                )
+                totalETHBalance().mul(priceFeed.lastGoodPrice()).div(1e18)
             );
     }
 
