@@ -15,6 +15,7 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+import "../interfaces/curve/IStableSwapExchange.sol";
 import "../interfaces/liquity/IPriceFeed.sol";
 import "../interfaces/liquity/IStabilityPool.sol";
 import "../interfaces/uniswap/IAndreOnChainOracle.sol";
@@ -45,6 +46,10 @@ contract Strategy is BaseStrategy {
     IAndreOnChainOracle internal constant twapOracle =
         IAndreOnChainOracle(0x0F1f5A87f99f0918e6C81F16E59F3518698221Ff);
 
+    // LUSD3CRV Curve Metapool
+    IStableSwapExchange internal constant curvePool =
+        IStableSwapExchange(0xEd279fDD11cA84bEef15AF5D39BB4d4bEE23F0cA);
+
     // Wrapped Ether - Used for swaps routing
     IERC20 internal constant WETH =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -56,8 +61,15 @@ contract Strategy is BaseStrategy {
     // Whether we want to read LQTY price from Uniswap V3 pool or not
     bool public twapEnabled;
 
+    // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
+    bool public convertDAItoLUSDonCurve;
+
     constructor(address _vault) public BaseStrategy(_vault) {
+        // Ignore LQTY rewards in estimatedTotalAssets by default
         twapEnabled = false;
+
+        // Use curve as default route to swap DAI for LUSD
+        convertDAItoLUSDonCurve = true;
     }
 
     // Strategy should be able to receive ETH
@@ -78,6 +90,14 @@ contract Strategy is BaseStrategy {
         onlyEmergencyAuthorized
     {
         twapEnabled = _twapEnabled;
+    }
+
+    // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
+    function setConvertDAItoLUSDonCurve(bool _convertDAItoLUSDonCurve)
+        external
+        onlyEmergencyAuthorized
+    {
+        convertDAItoLUSDonCurve = _convertDAItoLUSDonCurve;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -307,7 +327,7 @@ contract Strategy is BaseStrategy {
             _sellETHforDAI();
         }
 
-        // Use DAI-LUSD 0.05% pool in Uniswap V3 to get LUSD
+        // Convert all outstanding DAI back to LUSD
         if (DAI.balanceOf(address(this)) > 0) {
             _sellDAIforLUSD();
         }
@@ -356,6 +376,32 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellDAIforLUSD() internal {
+        if (convertDAItoLUSDonCurve) {
+            _sellDAIforLUSDonCurve();
+        } else {
+            _sellDAIforLUSDonUniswap();
+        }
+    }
+
+    function _sellDAIforLUSDonCurve() internal {
+        uint256 daiBalance = DAI.balanceOf(address(this));
+
+        _checkAllowance(address(curvePool), DAI, daiBalance);
+
+        // DAI is underlying index 1 - LUSD is 0
+        uint256 expectedDy = curvePool.get_dy_underlying(1, 0, daiBalance);
+
+        // As a safety measure expect to receive at least 95% of the underlying
+        // We can always switch back to Uniswap as a fallback if this cannot be honored
+        curvePool.exchange_underlying(
+            1,
+            0,
+            daiBalance,
+            expectedDy.mul(95).div(100)
+        );
+    }
+
+    function _sellDAIforLUSDonUniswap() internal {
         _checkAllowance(address(router), DAI, DAI.balanceOf(address(this)));
 
         ISwapRouter.ExactInputSingleParams memory params =
