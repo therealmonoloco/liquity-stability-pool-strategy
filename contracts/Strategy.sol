@@ -73,7 +73,8 @@ contract Strategy is BaseStrategy {
     // This is done to provide additional flexibility since this is ETH and not WETH
     // so gov cannot sweep it
     function swallowETH() external onlyGovernance {
-        msg.sender.transfer(address(this).balance);
+        (bool sent, ) = msg.sender.call{value: address(this).balance}("");
+        require(sent); // dev: could not send ether to governance
     }
 
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
