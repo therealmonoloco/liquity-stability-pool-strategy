@@ -69,6 +69,37 @@ def test_profitable_harvest(
     assert vault.totalAssets() > amount
 
 
+def test_profitable_harvest_with_full_withdrawal(
+    chain, token, vault, strategy, user, amount, lqty, lqty_whale, RELATIVE_APPROX
+):
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # Simulate profit
+    before_pps = vault.pricePerShare()
+    lqty.transfer(strategy, 20 * (10 ** lqty.decimals()), {"from": lqty_whale})
+
+    # Harvest 2: Realize profit
+    chain.sleep(1)
+    vault.updateStrategyDebtRatio(strategy, 0, {"from": vault.governance()})
+
+    # Since there might be a loss
+    strategy.setDoHealthCheck(False, {"from": vault.governance()})
+    strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+
+    assert vault.strategies(strategy).dict()['totalDebt'] == 0
+    assert vault.strategies(strategy).dict()['totalProfit'] > 0
+
+
 def test_change_debt(chain, gov, token, vault, strategy, user, amount, RELATIVE_APPROX):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
