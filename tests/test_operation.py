@@ -96,8 +96,8 @@ def test_profitable_harvest_with_full_withdrawal(
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
 
-    assert vault.strategies(strategy).dict()['totalDebt'] == 0
-    assert vault.strategies(strategy).dict()['totalProfit'] > 0
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
 
 
 def test_change_debt(chain, gov, token, vault, strategy, user, amount, RELATIVE_APPROX):
