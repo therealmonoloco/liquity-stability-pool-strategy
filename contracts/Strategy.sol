@@ -2,9 +2,7 @@
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-import {
-    BaseStrategy
-} from "@yearnvaults/contracts/BaseStrategy.sol";
+import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 import {
     SafeERC20,
@@ -111,9 +109,6 @@ contract Strategy is BaseStrategy {
         return
             totalLUSDBalance().add(
                 totalETHBalance().mul(priceFeed.lastGoodPrice()).div(1e18)
-            ).add(
-              //totalLQTYBalance().mul(lqtyOracle.price())
-              0
             );
     }
 
@@ -207,12 +202,6 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _amountFreed)
     {
-        // Based on https://etherscan.io/address/0x66017D22b0f8556afDd19FC67041899Eb65a21bb#code
-        // on line 391:
-        // uint LUSDtoWithdraw = LiquityMath._min(_amount, compoundedLUSDDeposit);
-        // here I would do:
-        // stabilityPool.withdrawFromSP(type(uint256).max);
-        // same for prepareMigration
         (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
     }
 
@@ -292,7 +281,6 @@ contract Strategy is BaseStrategy {
             stabilityPool.withdrawFromSP(1);
         }
 
-        // I just don't understand the need of separate swaps instead of a big route
         // Convert LQTY rewards to DAI
         if (LQTY.balanceOf(address(this)) > 0) {
             _sellLQTYforDAI();
@@ -364,14 +352,13 @@ contract Strategy is BaseStrategy {
 
         _checkAllowance(address(curvePool), DAI, daiBalance);
 
-        // Since get_dy_underlying is manipulable through flash-loan, doing a
-        // non 0 min out is unneeded.
-
         // DAI is underlying index 1 - LUSD is 0
         uint256 expectedDy = curvePool.get_dy_underlying(1, 0, daiBalance);
 
         // As a safety measure expect to receive at least 95% of the underlying
         // We can always switch back to Uniswap as a fallback if this cannot be honored
+        // poolpi's comment: Since get_dy_underlying is manipulable through flash-loan,
+        // doing a non 0 min out is unneeded.
         curvePool.exchange_underlying(
             1,
             0,
