@@ -128,7 +128,7 @@ contract Strategy is BaseStrategy {
         _claimRewards();
 
         // At this point all ETH and LQTY has been converted to LUSD
-        uint256 totalAssetsAfterClaim = balanceOfWant();
+        uint256 totalAssetsAfterClaim = totalLUSDBalance();
 
         if (totalAssetsAfterClaim > totalDebt) {
             _profit = totalAssetsAfterClaim.sub(totalDebt);

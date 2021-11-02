@@ -88,7 +88,7 @@ def test_direct_transfer_with_actual_eth_profits(
     assert initialProfit == 0
 
     token.approve(vault, 2 ** 256 - 1, {"from": lusd_whale})
-    vault.deposit(500_000 * (10 ** token.decimals()), {"from": lusd_whale})
+    vault.deposit(5_000_000 * (10 ** token.decimals()), {"from": lusd_whale})
 
     chain.sleep(1)
     strategy.harvest()
@@ -101,7 +101,7 @@ def test_direct_transfer_with_actual_eth_profits(
     chain.mine(1)
 
     # receive a direct transfer
-    airdropAmount = 10 * (10 ** token.decimals())
+    airdropAmount = 2 * (10 ** token.decimals())
     token.transfer(strategy, airdropAmount, {"from": lusd_whale})
 
     # sleep for another day

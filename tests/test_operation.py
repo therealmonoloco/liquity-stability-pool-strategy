@@ -55,7 +55,7 @@ def test_profitable_harvest(
 
     # Simulate profit
     before_pps = vault.pricePerShare()
-    lqty.transfer(strategy, 20 * (10 ** lqty.decimals()), {"from": lqty_whale})
+    lqty.transfer(strategy, 5 * (10 ** lqty.decimals()), {"from": lqty_whale})
 
     # Harvest 2: Realize profit
     chain.sleep(1)
@@ -83,7 +83,6 @@ def test_profitable_harvest_with_full_withdrawal(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # Simulate profit
-    before_pps = vault.pricePerShare()
     lqty.transfer(strategy, 5 * (10 ** lqty.decimals()), {"from": lqty_whale})
 
     # Harvest 2: Realize profit
