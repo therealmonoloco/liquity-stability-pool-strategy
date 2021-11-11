@@ -278,7 +278,7 @@ contract Strategy is BaseStrategy {
     function _claimRewards() internal {
         // Withdraw minimum amount to force LQTY and ETH to be claimed
         if (stabilityPool.getCompoundedLUSDDeposit(address(this)) > 0) {
-            stabilityPool.withdrawFromSP(1);
+            stabilityPool.withdrawFromSP(0);
         }
 
         // Convert LQTY rewards to DAI
