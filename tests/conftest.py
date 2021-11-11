@@ -50,7 +50,7 @@ def healthCheck():
 
 @pytest.fixture
 def token():
-    token_address = "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
+    token_address = "0x6B175474E89094C44Da98b954EedeAC495271d0F"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
     yield Contract(token_address)
 
 

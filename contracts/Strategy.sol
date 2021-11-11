@@ -25,6 +25,10 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant LQTY =
         IERC20(0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D);
 
+    // LUSD will be the investment token to deposit
+    IERC20 internal constant LUSD =
+        IERC20(0x5f98805A4E8be255a32880FDeC7F6728C6568bA0);
+
     // Source of liquidity to repay debt from liquidated troves
     IStabilityPool internal constant stabilityPool =
         IStabilityPool(0x66017D22b0f8556afDd19FC67041899Eb65a21bb);
@@ -49,13 +53,7 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant DAI =
         IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
 
-    // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
-    bool public convertDAItoLUSDonCurve;
-
     constructor(address _vault) public BaseStrategy(_vault) {
-        // Use curve as default route to swap DAI for LUSD
-        convertDAItoLUSDonCurve = true;
-
         // Set health check to health.ychad.eth
         healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
     }
@@ -71,14 +69,6 @@ contract Strategy is BaseStrategy {
     function swallowETH() external onlyGovernance {
         (bool sent, ) = msg.sender.call{value: address(this).balance}("");
         require(sent); // dev: could not send ether to governance
-    }
-
-    // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
-    function setConvertDAItoLUSDonCurve(bool _convertDAItoLUSDonCurve)
-        external
-        onlyEmergencyAuthorized
-    {
-        convertDAItoLUSDonCurve = _convertDAItoLUSDonCurve;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -105,9 +95,9 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        // 1 LUSD = 1 USD *guaranteed* (TM)
+        // Assume 1 DAI = 1 LUSD = 1 USD for estimation purposes
         return
-            totalLUSDBalance().add(
+            balanceOfWant().add(totalLUSDBalance()).add(
                 totalETHBalance().mul(priceFeed.lastGoodPrice()).div(1e18)
             );
     }
@@ -121,15 +111,16 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        // How much do we owe to the LUSD vault?
+        // How much do we owe to the DAI vault?
         uint256 totalDebt = vault.strategies(address(this)).totalDebt;
 
-        // Claim LQTY/ETH and sell them for more LUSD
+        // Claim LQTY/ETH and sell them for more DAI
         _claimRewards();
 
-        // At this point all ETH and LQTY has been converted to LUSD
-        uint256 totalAssetsAfterClaim = totalLUSDBalance();
+        // At this point all ETH and LQTY has been converted to DAI
+        uint256 totalAssetsAfterClaim = balanceOfWant().add(totalLUSDBalance());
 
+        // Assume 1 DAI = 1 LUSD - any loss due to peg will be accounted for next
         if (totalAssetsAfterClaim > totalDebt) {
             _profit = totalAssetsAfterClaim.sub(totalDebt);
             _loss = 0;
@@ -138,25 +129,47 @@ contract Strategy is BaseStrategy {
             _loss = totalDebt.sub(totalAssetsAfterClaim);
         }
 
-        // We cannot incur in additional losses during liquidatePosition because they
-        // have already been accounted for in the check above, so we ignore them
         uint256 _amountFreed;
-        (_amountFreed, ) = liquidatePosition(_debtOutstanding.add(_profit));
+        uint256 _liquidationLoss;
+        (_amountFreed, _liquidationLoss) = liquidatePosition(
+            _debtOutstanding.add(_profit)
+        );
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+
+        // Account for any additional loss in liquidatePosition
+        if (_liquidationLoss > 0) {
+            uint256 diff = Math.min(_liquidationLoss, _profit);
+            _profit = _profit.sub(diff);
+            _liquidationLoss = _liquidationLoss.sub(diff);
+            _loss.add(_liquidationLoss);
+        }
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
         // Provide any leftover balance to the stability pool
         // Use zero address for frontend as we are interacting with the contracts directly
         uint256 wantBalance = balanceOfWant();
+
         if (wantBalance > _debtOutstanding) {
+            _sellDAIforLUSD(wantBalance.sub(_debtOutstanding));
+        }
+
+        // Deposit any LUSD left
+        if (LUSD.balanceOf(address(this)) > 0) {
             stabilityPool.provideToSP(
-                wantBalance.sub(_debtOutstanding),
+                LUSD.balanceOf(address(this)),
                 address(0)
             );
         }
     }
 
+    /**
+        ***IMPORTANT***
+        This method might perform token conversions (LUSD->DAI) and it is
+        assumed to be called only from prepareReturn through flahshbots.
+        Strategy will be placed at the end of yvDAI queue so no withdrawals
+        take place.
+     **/
     function liquidatePosition(uint256 _amountNeeded)
         internal
         override
@@ -170,7 +183,9 @@ contract Strategy is BaseStrategy {
         }
 
         // Only need to free the amount of want not readily available
-        uint256 amountToWithdraw = _amountNeeded.sub(balance);
+        // Assume we need an additional 5% to cover fees and slippage
+        // Will get reinvested if is more than needed
+        uint256 amountToWithdraw = _amountNeeded.sub(balance).mul(105).div(100);
 
         // Cannot withdraw more than what we have in deposit
         amountToWithdraw = Math.min(
@@ -182,11 +197,8 @@ contract Strategy is BaseStrategy {
             stabilityPool.withdrawFromSP(amountToWithdraw);
         }
 
-        // After withdrawing from the stability pool it could happen that we have
-        // enough LQTY / ETH to cover a loss before reporting it.
-        // However, doing a swap at this point could make withdrawals insecure
-        // and front-runnable, so we assume LUSD that cannot be returned is a
-        // realized loss.
+        _sellLUSDforDAI(amountToWithdraw);
+
         uint256 looseWant = balanceOfWant();
         if (_amountNeeded > looseWant) {
             _liquidatedAmount = looseWant;
@@ -202,20 +214,20 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _amountFreed)
     {
-        (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
+        (_amountFreed, ) = liquidatePosition(
+            balanceOfWant().add(totalLUSDBalance())
+        );
     }
 
+    // This method will perform token conversions so should be called in a
+    // stealth transaction (i.e: using flashbots)
     function prepareMigration(address _newStrategy) internal override {
-        if (stabilityPool.getCompoundedLUSDDeposit(address(this)) <= 0) {
-            return;
-        }
-
-        // Withdraw entire LUSD balance from Stability Pool
-        // ETH + LQTY gains should be harvested before migrating
-        // `migrate` will automatically forward all `want` in this strategy to the new one
         stabilityPool.withdrawFromSP(
             stabilityPool.getCompoundedLUSDDeposit(address(this))
         );
+
+        _claimRewards();
+        _sellLUSDforDAI(LUSD.balanceOf(address(this)));
     }
 
     function protectedTokens()
@@ -243,7 +255,7 @@ contract Strategy is BaseStrategy {
 
     function totalLUSDBalance() public view returns (uint256) {
         return
-            balanceOfWant().add(
+            LUSD.balanceOf(address(this)).add(
                 stabilityPool.getCompoundedLUSDDeposit(address(this))
             );
     }
@@ -276,7 +288,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _claimRewards() internal {
-        // Withdraw minimum amount to force LQTY and ETH to be claimed
+        // Need to interact with SP so rewards are sent to the strategy
         if (stabilityPool.getCompoundedLUSDDeposit(address(this)) > 0) {
             stabilityPool.withdrawFromSP(0);
         }
@@ -289,11 +301,6 @@ contract Strategy is BaseStrategy {
         // Convert ETH obtained from liquidations to DAI
         if (address(this).balance > 0) {
             _sellETHforDAI();
-        }
-
-        // Convert all outstanding DAI back to LUSD
-        if (DAI.balanceOf(address(this)) > 0) {
-            _sellDAIforLUSD();
         }
     }
 
@@ -339,48 +346,31 @@ contract Strategy is BaseStrategy {
         router.refundETH();
     }
 
-    function _sellDAIforLUSD() internal {
-        if (convertDAItoLUSDonCurve) {
-            _sellDAIforLUSDonCurve();
-        } else {
-            _sellDAIforLUSDonUniswap();
-        }
+    function _sellDAIforLUSD(uint256 _daiAmount) internal {
+        _swap(DAI, _daiAmount);
     }
 
-    function _sellDAIforLUSDonCurve() internal {
-        uint256 daiBalance = DAI.balanceOf(address(this));
+    function _sellLUSDforDAI(uint256 _lusdAmount) internal {
+        _swap(LUSD, _lusdAmount);
+    }
 
-        _checkAllowance(address(curvePool), DAI, daiBalance);
+    function _swap(IERC20 _from, uint256 _amount) internal {
+        int128 i = _from == LUSD ? 0 : 1;
+        int128 j = i == 1 ? 0 : 1;
+
+        _checkAllowance(address(curvePool), _from, _amount);
 
         // DAI is underlying index 1 - LUSD is 0
-        uint256 expectedDy = curvePool.get_dy_underlying(1, 0, daiBalance);
+        uint256 expectedDy = curvePool.get_dy_underlying(i, j, _amount);
 
         // As a safety measure expect to receive at least 95% of the underlying
-        // We can always switch back to Uniswap as a fallback if this cannot be honored
         // poolpi's comment: Since get_dy_underlying is manipulable through flash-loan,
         // doing a non 0 min out is unneeded.
         curvePool.exchange_underlying(
-            1,
-            0,
-            daiBalance,
+            i,
+            j,
+            _amount,
             expectedDy.mul(95).div(100)
         );
-    }
-
-    function _sellDAIforLUSDonUniswap() internal {
-        _checkAllowance(address(router), DAI, DAI.balanceOf(address(this)));
-
-        ISwapRouter.ExactInputSingleParams memory params =
-            ISwapRouter.ExactInputSingleParams(
-                address(DAI), // tokenIn
-                address(want), // tokenOut
-                500, // 0.05% fee
-                address(this), // recipient
-                now, // deadline
-                DAI.balanceOf(address(this)), // amountIn
-                0, // amountOut
-                0 // sqrtPriceLimitX96
-            );
-        router.exactInputSingle(params);
     }
 }
