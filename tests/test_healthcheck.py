@@ -70,8 +70,8 @@ def test_loss_under_max_ratio_does_not_revert(
     assert True
 
 
-def test_high_profit_causes_healthcheck_revert(
-    vault, strategy, token, dai_whale, lusd, lusd_whale, healthCheck
+def disabled_test_high_profit_causes_healthcheck_revert(
+    vault, strategy, token, dai_whale, healthCheck
 ):
     profitLimit = healthCheck.profitLimitRatio()
     maxBPS = 10_000

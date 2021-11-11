@@ -141,7 +141,7 @@ contract Strategy is BaseStrategy {
             uint256 diff = Math.min(_liquidationLoss, _profit);
             _profit = _profit.sub(diff);
             _liquidationLoss = _liquidationLoss.sub(diff);
-            _loss.add(_liquidationLoss);
+            _loss = _loss.add(_liquidationLoss);
         }
     }
 
