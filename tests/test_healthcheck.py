@@ -1,31 +1,6 @@
 from brownie import chain, reverts
 
 
-def test_high_profit_causes_healthcheck_revert(
-    vault, strategy, token, dai_whale, healthCheck
-):
-    profitLimit = healthCheck.profitLimitRatio()
-    maxBPS = 10_000
-
-    # Send some funds to the strategy
-    token.approve(vault.address, 2 ** 256 - 1, {"from": dai_whale})
-    vault.deposit(50_000 * (10 ** token.decimals()), {"from": dai_whale})
-    chain.sleep(1)
-    strategy.harvest()
-
-    token.transfer(
-        strategy,
-        vault.strategies(strategy).dict()["totalDebt"] * ((profitLimit * 1.1) / maxBPS),
-        {"from": dai_whale},
-    )
-
-    assert False
-
-    chain.sleep(1)
-    with reverts("!healthcheck"):
-        strategy.harvest()
-
-
 def test_profit_under_max_ratio_does_not_revert(
     vault, strategy, token, dai_whale, healthCheck
 ):
@@ -51,7 +26,7 @@ def test_profit_under_max_ratio_does_not_revert(
     assert True
 
 
-def test_high_loss_causes_healthcheck_revert(vault, strategy, token, dai_whale):
+def test_high_loss_causes_healthcheck_revert(vault, strategy, token, dai_whale, lusd):
     # Send some funds to the strategy
     token.approve(vault.address, 2 ** 256 - 1, {"from": dai_whale})
     vault.deposit(50_000 * (10 ** token.decimals()), {"from": dai_whale})
@@ -62,10 +37,10 @@ def test_high_loss_causes_healthcheck_revert(vault, strategy, token, dai_whale):
     strategy.withdrawLUSD(
         20_000 * (10 ** token.decimals()), {"from": strategy.strategist()}
     )
-    token.transfer(dai_whale, token.balanceOf(strategy), {"from": strategy})
+    lusd.transfer(dai_whale, lusd.balanceOf(strategy), {"from": strategy})
 
+    chain.sleep(1)
     with reverts("!healthcheck"):
-        chain.sleep(1)
         strategy.harvest()
 
 
@@ -93,3 +68,26 @@ def test_loss_under_max_ratio_does_not_revert(
 
     # If we reach the assert the harvest did not revert
     assert True
+
+
+def test_high_profit_causes_healthcheck_revert(
+    vault, strategy, token, dai_whale, lusd, lusd_whale, healthCheck
+):
+    profitLimit = healthCheck.profitLimitRatio()
+    maxBPS = 10_000
+
+    # Send some funds to the strategy
+    token.approve(vault.address, 2 ** 256 - 1, {"from": dai_whale})
+    vault.deposit(70_000 * (10 ** token.decimals()), {"from": dai_whale})
+    chain.sleep(1)
+    strategy.harvest()
+
+    token.transfer(
+        strategy,
+        vault.strategies(strategy).dict()["totalDebt"] * ((profitLimit * 1.1) / maxBPS),
+        {"from": dai_whale},
+    )
+
+    chain.sleep(1)
+    with reverts("!healthcheck"):
+        strategy.harvest()
