@@ -17,8 +17,12 @@ contract TestStrategy is Strategy {
         _sellETHforDAI();
     }
 
-    function sellDAIforLUSD() public {
-        _sellDAIforLUSD();
+    function sellDAIforLUSD(uint256 _amount) public {
+        _sellDAIforLUSD(_amount);
+    }
+
+    function sellLUSDforDAI(uint256 _amount) public {
+        _sellLUSDforDAI(_amount);
     }
 
     function claimRewards() public {

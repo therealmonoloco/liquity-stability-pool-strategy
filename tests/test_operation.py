@@ -1,9 +1,9 @@
 import pytest
 
-from brownie import chain, reverts, Wei
+from brownie import reverts, Wei
 
 
-def test_operation(chain, token, vault, strategy, user, amount, RELATIVE_APPROX):
+def test_operation(chain, token, vault, strategy, user, amount):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
     token.approve(vault.address, amount, {"from": user})
@@ -13,35 +13,34 @@ def test_operation(chain, token, vault, strategy, user, amount, RELATIVE_APPROX)
     # harvest
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # tend()
     strategy.tend()
 
-    # withdrawal
-    vault.withdraw({"from": user})
-    assert (
-        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
-    )
+    # withdrawal - accept 1.5% loss due to immediate conversion
+    vault.withdraw(vault.balanceOf(user), user, 150, {"from": user})
+    assert pytest.approx(token.balanceOf(user), rel=1e-2) == user_balance_before
 
 
-def test_emergency_exit(chain, token, vault, strategy, user, amount, RELATIVE_APPROX):
+def test_emergency_exit(chain, token, vault, strategy, user, amount):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # set emergency and exit
     strategy.setEmergencyExit()
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     chain.sleep(1)
     strategy.harvest()
     assert strategy.estimatedTotalAssets() < amount
 
 
 def test_profitable_harvest(
-    chain, token, vault, strategy, user, amount, lqty, lqty_whale, RELATIVE_APPROX
+    chain, token, vault, strategy, user, amount, lqty, lqty_whale
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -51,7 +50,7 @@ def test_profitable_harvest(
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # Simulate profit
     before_pps = vault.pricePerShare()
@@ -70,7 +69,7 @@ def test_profitable_harvest(
 
 
 def test_profitable_harvest_with_full_withdrawal(
-    chain, token, vault, strategy, user, amount, lqty, lqty_whale, RELATIVE_APPROX
+    chain, token, vault, strategy, user, amount, lqty, lqty_whale
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -80,7 +79,7 @@ def test_profitable_harvest_with_full_withdrawal(
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # Simulate profit
     lqty.transfer(strategy, 5 * (10 ** lqty.decimals()), {"from": lqty_whale})
@@ -99,7 +98,7 @@ def test_profitable_harvest_with_full_withdrawal(
     assert vault.strategies(strategy).dict()["totalGain"] > 0
 
 
-def test_change_debt(chain, gov, token, vault, strategy, user, amount, RELATIVE_APPROX):
+def test_change_debt(chain, gov, token, vault, strategy, user, amount):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
@@ -108,17 +107,19 @@ def test_change_debt(chain, gov, token, vault, strategy, user, amount, RELATIVE_
     strategy.harvest()
     half = int(amount / 2)
 
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == half
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
     chain.sleep(1)
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     chain.sleep(1)
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == half
 
 
 def test_sweep(gov, vault, strategy, token, user, amount):
@@ -152,24 +153,25 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     vault,
     strategy,
     accounts,
+    dai_whale,
+    lusd,
     lusd_whale,
     lqty,
     lqty_whale,
     weth,
     gov,
-    RELATIVE_APPROX,
 ):
     amount = 50_000 * (10 ** token.decimals())
 
     # Deposit to the vault
-    token.approve(vault.address, amount, {"from": lusd_whale})
-    vault.deposit(amount, {"from": lusd_whale})
+    token.approve(vault.address, amount, {"from": dai_whale})
+    vault.deposit(amount, {"from": dai_whale})
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # Simulate loss. We are going to send 1 eth and 10 lqty to the strategy but
     # perform an external withdraw of 20000 LUSD
@@ -177,11 +179,11 @@ def test_loss_in_lusd_due_to_eth_price_declining_faster(
     accounts.at(weth, force=True).transfer(strategy, Wei("1 ether"))
     lqty.transfer(strategy, 10 * (10 ** lqty.decimals()), {"from": lqty_whale})
     strategy.withdrawLUSD(
-        20_000 * (10 ** token.decimals()), {"from": strategy.strategist()}
+        20_000 * (10 ** lusd.decimals()), {"from": strategy.strategist()}
     )
 
     # Send LUSD away so it is not in the strategy's balance
-    token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
+    lusd.transfer(lusd_whale, lusd.balanceOf(strategy), {"from": strategy})
 
     # Turn off healthcheck for this one as the loss is going to be big
     strategy.setDoHealthCheck(False, {"from": gov})
@@ -206,24 +208,25 @@ def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
     vault,
     strategy,
     accounts,
+    dai_whale,
+    lusd,
     lusd_whale,
     lqty,
     lqty_whale,
     weth,
     gov,
-    RELATIVE_APPROX,
 ):
     amount = 50_000 * (10 ** token.decimals())
 
     # Deposit to the vault
-    token.approve(vault.address, amount, {"from": lusd_whale})
-    vault.deposit(amount, {"from": lusd_whale})
+    token.approve(vault.address, amount, {"from": dai_whale})
+    vault.deposit(amount, {"from": dai_whale})
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
     strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     # Simulate ETH price went further down than the 10% premium we got
     # We are going to send 1 eth and 1500 lqty to the strategy but
@@ -233,11 +236,11 @@ def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
     accounts.at(weth, force=True).transfer(strategy, Wei("1 ether"))
     lqty.transfer(strategy, 1500 * (10 ** lqty.decimals()), {"from": lqty_whale})
     strategy.withdrawLUSD(
-        10_000 * (10 ** token.decimals()), {"from": strategy.strategist()}
+        10_000 * (10 ** lusd.decimals()), {"from": strategy.strategist()}
     )
 
     # Send LUSD away so it is not in the strategy's balance
-    token.transfer(lusd_whale, token.balanceOf(strategy), {"from": strategy})
+    lusd.transfer(lusd_whale, lusd.balanceOf(strategy), {"from": strategy})
 
     # Turn off healthcheck for this one
     strategy.setDoHealthCheck(False, {"from": gov})
@@ -249,7 +252,7 @@ def test_loss_in_lusd_but_ends_in_profit_because_lqty_rewards_are_higher(
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
 
-    assert strategy.estimatedTotalAssets() == amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
     assert vault.pricePerShare() > before_pps
     assert vault.totalAssets() > amount
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
