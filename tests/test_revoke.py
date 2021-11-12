@@ -14,6 +14,7 @@ def test_revoke_strategy_from_vault(chain, token, vault, strategy, dai_whale, go
 
     vault.revokeStrategy(strategy.address, {"from": gov})
     chain.sleep(1)
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     strategy.harvest()
     assert pytest.approx(token.balanceOf(vault.address), rel=1e-2) == amount
 
