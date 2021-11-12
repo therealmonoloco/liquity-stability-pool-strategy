@@ -347,14 +347,18 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellDAIforLUSD(uint256 _daiAmount) internal {
-        _swap(DAI, _daiAmount);
+        if (_daiAmount > 0) {
+            _swapStables(DAI, _daiAmount);
+        }
     }
 
     function _sellLUSDforDAI(uint256 _lusdAmount) internal {
-        _swap(LUSD, _lusdAmount);
+        if (_lusdAmount > 0) {
+            _swapStables(LUSD, _lusdAmount);
+        }
     }
 
-    function _swap(IERC20 _from, uint256 _amount) internal {
+    function _swapStables(IERC20 _from, uint256 _amount) internal {
         int128 i = _from == LUSD ? 0 : 1;
         int128 j = i == 1 ? 0 : 1;
 

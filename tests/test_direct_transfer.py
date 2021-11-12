@@ -30,12 +30,15 @@ def test_direct_transfer_increments_profits(vault, strategy, token, dai_whale):
     chain.sleep(1)
     strategy.harvest()
 
-    amount = 50 * (10 ** token.decimals())
+    amount = 500 * (10 ** token.decimals())
     token.transfer(strategy, amount, {"from": dai_whale})
 
     chain.sleep(1)
     strategy.harvest()
-    assert vault.strategies(strategy).dict()["totalGain"] >= (initialProfit + amount)
+    assert (
+        abs(vault.strategies(strategy).dict()["totalGain"] - (initialProfit + amount))
+        < 0.1 * amount
+    )
 
 
 def test_deposit_should_not_increment_profits(vault, strategy, token, dai_whale):

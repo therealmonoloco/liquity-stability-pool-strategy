@@ -111,11 +111,13 @@ def test_change_debt(chain, gov, token, vault, strategy, user, amount):
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
     chain.sleep(1)
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == amount
 
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     chain.sleep(1)
+    strategy.setDoHealthCheck(False, {"from": vault.management()})
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=1e-2) == half
 
