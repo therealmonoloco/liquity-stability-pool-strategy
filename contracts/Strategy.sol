@@ -52,12 +52,22 @@ contract Strategy is BaseStrategy {
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
     bool public convertDAItoLUSDonCurve;
 
+    // Allow changing fees to take advantage of cheaper or more liquid Uniswap pools
+    uint24 public lqtyToEthFee;
+    uint24 public ethToDaiFee;
+    uint24 public daiToLusdFee;
+
     constructor(address _vault) public BaseStrategy(_vault) {
         // Use curve as default route to swap DAI for LUSD
         convertDAItoLUSDonCurve = true;
 
         // Set health check to health.ychad.eth
         healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
+
+        // Set default pools to use on Uniswap
+        lqtyToEthFee = 3000;
+        ethToDaiFee = 500;
+        daiToLusdFee = 500;
     }
 
     // Strategy should be able to receive ETH
@@ -79,6 +89,17 @@ contract Strategy is BaseStrategy {
         onlyEmergencyAuthorized
     {
         convertDAItoLUSDonCurve = _convertDAItoLUSDonCurve;
+    }
+
+    // Take advantage of cheaper Uniswap pools
+    // Setting a non-existent pool will cause the swap operation to revert
+    function setSwapFees(uint24 _lqtyToEthFee, uint24 _ethToDaiFee, uint24 _daiToLusdFee)
+        external
+        onlyEmergencyAuthorized
+    {
+            lqtyToEthFee = _lqtyToEthFee;
+            ethToDaiFee = _ethToDaiFee;
+            daiToLusdFee = _daiToLusdFee;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -304,10 +325,10 @@ contract Strategy is BaseStrategy {
 
         bytes memory path =
             abi.encodePacked(
-                address(LQTY), // LQTY-ETH 0.3%
-                uint24(3000),
-                address(WETH), // ETH-DAI 0.3%
-                uint24(3000),
+                address(LQTY), // LQTY-ETH
+                lqtyToEthFee,
+                address(WETH), // ETH-DAI
+                ethToDaiFee,
                 address(DAI)
             );
 
@@ -327,7 +348,7 @@ contract Strategy is BaseStrategy {
             ISwapRouter.ExactInputSingleParams(
                 address(WETH), // tokenIn
                 address(DAI), // tokenOut
-                3000, // 0.3% fee
+                ethToDaiFee, // ETH-DAI fee
                 address(this), // recipient
                 now, // deadline
                 address(this).balance, // amountIn
@@ -374,7 +395,7 @@ contract Strategy is BaseStrategy {
             ISwapRouter.ExactInputSingleParams(
                 address(DAI), // tokenIn
                 address(want), // tokenOut
-                500, // 0.05% fee
+                daiToLusdFee, // DAI-LUSD fee
                 address(this), // recipient
                 now, // deadline
                 DAI.balanceOf(address(this)), // amountIn
