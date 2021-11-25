@@ -99,13 +99,14 @@ contract Strategy is BaseStrategy {
 
     // Take advantage of cheaper Uniswap pools
     // Setting a non-existent pool will cause the swap operation to revert
-    function setSwapFees(uint24 _lqtyToEthFee, uint24 _ethToDaiFee, uint24 _daiToLusdFee)
-        external
-        onlyEmergencyAuthorized
-    {
-            lqtyToEthFee = _lqtyToEthFee;
-            ethToDaiFee = _ethToDaiFee;
-            daiToLusdFee = _daiToLusdFee;
+    function setSwapFees(
+        uint24 _lqtyToEthFee,
+        uint24 _ethToDaiFee,
+        uint24 _daiToLusdFee
+    ) external onlyEmergencyAuthorized {
+        lqtyToEthFee = _lqtyToEthFee;
+        ethToDaiFee = _ethToDaiFee;
+        daiToLusdFee = _daiToLusdFee;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -380,8 +381,8 @@ contract Strategy is BaseStrategy {
         _checkAllowance(address(curvePool), DAI, daiBalance);
 
         curvePool.exchange_underlying(
-            1,  // from DAI index
-            0,  // to LUSD index
+            1, // from DAI index
+            0, // to LUSD index
             daiBalance, // amount
             0 // minDy - run through flashbots! :)
         );
