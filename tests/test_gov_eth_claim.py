@@ -1,6 +1,34 @@
 from brownie import reverts, Wei
 
 
+def test_wrap_eth_acl(strategy, gov, strategist, management, guardian, user):
+    with reverts("!authorized"):
+        strategy.wrapETH({"from": management})
+
+    with reverts("!authorized"):
+        strategy.wrapETH({"from": strategist})
+
+    with reverts("!authorized"):
+        strategy.wrapETH({"from": guardian})
+
+    with reverts("!authorized"):
+        strategy.wrapETH({"from": user})
+
+    strategy.wrapETH({"from": gov})
+
+
+def test_wrap_eth(
+    strategy, gov, strategist, management, guardian, user, accounts, weth
+):
+    accounts.at(weth, force=True).transfer(strategy, Wei("10 ether"))
+    assert strategy.balance() == Wei("10 ether")
+    assert weth.balanceOf(strategy) == 0
+
+    strategy.wrapETH({"from": gov})
+    assert strategy.balance() == 0
+    assert weth.balanceOf(strategy) == Wei("10 ether")
+
+
 def test_swallow_eth_acl(strategy, gov, strategist, management, guardian, user):
     strategy.swallowETH({"from": gov})
 

@@ -15,6 +15,7 @@ import "../interfaces/curve/IStableSwapExchange.sol";
 import "../interfaces/liquity/IPriceFeed.sol";
 import "../interfaces/liquity/IStabilityPool.sol";
 import "../interfaces/uniswap/ISwapRouter.sol";
+import "../interfaces/weth/IWETH9.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
@@ -42,8 +43,8 @@ contract Strategy is BaseStrategy {
         IStableSwapExchange(0xEd279fDD11cA84bEef15AF5D39BB4d4bEE23F0cA);
 
     // Wrapped Ether - Used for swaps routing
-    IERC20 internal constant WETH =
-        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IWETH9 internal constant WETH =
+        IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     // DAI - Used for swaps routing
     IERC20 internal constant DAI =
@@ -81,6 +82,11 @@ contract Strategy is BaseStrategy {
     function swallowETH() external onlyGovernance {
         (bool sent, ) = msg.sender.call{value: address(this).balance}("");
         require(sent); // dev: could not send ether to governance
+    }
+
+    // Allow governance to wrap any outstanding ETH balance
+    function wrapETH() external onlyGovernance {
+        WETH.deposit{value: address(this).balance}();
     }
 
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
