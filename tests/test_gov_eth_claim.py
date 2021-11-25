@@ -17,9 +17,7 @@ def test_wrap_eth_acl(strategy, gov, strategist, management, guardian, user):
     strategy.wrapETH({"from": gov})
 
 
-def test_wrap_eth(
-    strategy, gov, strategist, management, guardian, user, accounts, weth
-):
+def test_wrap_eth(strategy, gov, accounts, weth):
     accounts.at(weth, force=True).transfer(strategy, Wei("10 ether"))
     assert strategy.balance() == Wei("10 ether")
     assert weth.balanceOf(strategy) == 0
@@ -27,6 +25,18 @@ def test_wrap_eth(
     strategy.wrapETH({"from": gov})
     assert strategy.balance() == 0
     assert weth.balanceOf(strategy) == Wei("10 ether")
+
+
+def test_sweep_wrapped_eth(strategy, gov, accounts, weth):
+    accounts.at(weth, force=True).transfer(strategy, Wei("10 ether"))
+    strategy.wrapETH({"from": gov})
+
+    prev_balance = weth.balanceOf(gov)
+
+    strategy.sweep(weth, {"from": gov})
+    assert weth.balanceOf(gov) == prev_balance + Wei("10 ether")
+    assert weth.balanceOf(strategy) == 0
+    assert strategy.balance() == 0
 
 
 def test_swallow_eth_acl(strategy, gov, strategist, management, guardian, user):
