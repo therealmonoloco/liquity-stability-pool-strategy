@@ -379,18 +379,11 @@ contract Strategy is BaseStrategy {
 
         _checkAllowance(address(curvePool), DAI, daiBalance);
 
-        // DAI is underlying index 1 - LUSD is 0
-        uint256 expectedDy = curvePool.get_dy_underlying(1, 0, daiBalance);
-
-        // As a safety measure expect to receive at least 95% of the underlying
-        // We can always switch back to Uniswap as a fallback if this cannot be honored
-        // poolpi's comment: Since get_dy_underlying is manipulable through flash-loan,
-        // doing a non 0 min out is unneeded.
         curvePool.exchange_underlying(
-            1,
-            0,
-            daiBalance,
-            expectedDy.mul(95).div(100)
+            1,  // from DAI index
+            0,  // to LUSD index
+            daiBalance, // amount
+            0 // minDy - run through flashbots! :)
         );
     }
 
