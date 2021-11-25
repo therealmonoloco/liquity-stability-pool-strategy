@@ -1,6 +1,41 @@
 from brownie import reverts, Wei
 
 
+def test_set_swap_fees_acl(
+    strategy, gov, strategist, management, keeper, guardian, user
+):
+    # Check default swap fees
+    assert strategy.lqtyToEthFee() == 3000  # 0.3% pool
+    assert strategy.ethToDaiFee() == 500  # 0.05% pool
+    assert strategy.daiToLusdFee() == 500  # 0.05% pool
+
+    strategy.setSwapFees(100, 200, 300, {"from": gov})
+    assert strategy.lqtyToEthFee() == 100
+    assert strategy.ethToDaiFee() == 200
+    assert strategy.daiToLusdFee() == 300
+
+    strategy.setSwapFees(400, 500, 600, {"from": strategist})
+    assert strategy.lqtyToEthFee() == 400
+    assert strategy.ethToDaiFee() == 500
+    assert strategy.daiToLusdFee() == 600
+
+    strategy.setSwapFees(700, 800, 900, {"from": guardian})
+    assert strategy.lqtyToEthFee() == 700
+    assert strategy.ethToDaiFee() == 800
+    assert strategy.daiToLusdFee() == 900
+
+    strategy.setSwapFees(1000, 1100, 1200, {"from": management})
+    assert strategy.lqtyToEthFee() == 1000
+    assert strategy.ethToDaiFee() == 1100
+    assert strategy.daiToLusdFee() == 1200
+
+    with reverts("!authorized"):
+        strategy.setSwapFees(1, 2, 3, {"from": keeper})
+
+    with reverts("!authorized"):
+        strategy.setSwapFees(4, 5, 6, {"from": user})
+
+
 def test_use_curve_acl(strategy, gov, strategist, management, keeper, guardian, user):
     # Check that default is set to True
     assert strategy.convertDAItoLUSDonCurve() == True
@@ -24,6 +59,28 @@ def test_use_curve_acl(strategy, gov, strategist, management, keeper, guardian, 
         strategy.setConvertDAItoLUSDonCurve(True, {"from": user})
 
 
+def test_lqty_to_dai_with_invalid_lqty_eth_fee_reverts(
+    test_strategy, dai, lqty, lqty_whale
+):
+    test_strategy.setSwapFees(
+        123, test_strategy.ethToDaiFee(), test_strategy.daiToLusdFee()
+    )
+    lqty.transfer(test_strategy, 1_000 * (10 ** lqty.decimals()), {"from": lqty_whale})
+    with reverts():
+        test_strategy.sellLQTYforDAI()
+
+
+def test_lqty_to_dai_with_invalid_eth_dai_fee_reverts(
+    test_strategy, dai, lqty, lqty_whale
+):
+    test_strategy.setSwapFees(
+        test_strategy.lqtyToEthFee(), 123123, test_strategy.daiToLusdFee()
+    )
+    lqty.transfer(test_strategy, 1_000 * (10 ** lqty.decimals()), {"from": lqty_whale})
+    with reverts():
+        test_strategy.sellLQTYforDAI()
+
+
 def test_lqty_to_dai_swap(test_strategy, dai, lqty, lqty_whale):
     assert test_strategy.totalETHBalance() == 0
     assert test_strategy.totalLQTYBalance() == 0
@@ -39,6 +96,16 @@ def test_lqty_to_dai_swap(test_strategy, dai, lqty, lqty_whale):
     assert dai.balanceOf(test_strategy) > 0
 
 
+def test_eth_to_dai_with_invalid_fee_reverts(test_strategy, accounts, weth):
+    test_strategy.setSwapFees(
+        test_strategy.lqtyToEthFee(), 5511, test_strategy.daiToLusdFee()
+    )
+
+    accounts.at(weth, force=True).transfer(test_strategy, Wei("100 ether"))
+    with reverts():
+        test_strategy.sellETHforDAI()
+
+
 def test_eth_to_dai_swap(test_strategy, accounts, weth, dai):
     assert test_strategy.totalETHBalance() == 0
     assert test_strategy.totalLQTYBalance() == 0
@@ -51,6 +118,20 @@ def test_eth_to_dai_swap(test_strategy, accounts, weth, dai):
 
     assert test_strategy.totalETHBalance() == 0
     assert dai.balanceOf(test_strategy) > 0
+
+
+def test_dai_to_lusd_with_invalid_fee_reverts(test_strategy, dai, dai_whale, lusd):
+    test_strategy.setConvertDAItoLUSDonCurve(
+        False, {"from": test_strategy.strategist()}
+    )
+
+    test_strategy.setSwapFees(
+        test_strategy.lqtyToEthFee(), test_strategy.ethToDaiFee(), 90000
+    )
+    dai.transfer(test_strategy, 1_000 * (10 ** dai.decimals()), {"from": dai_whale})
+
+    with reverts():
+        test_strategy.sellDAIforLUSD()
 
 
 def test_dai_to_lusd_swap_on_uniswap(test_strategy, dai, dai_whale, lusd):

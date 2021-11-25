@@ -15,6 +15,7 @@ import "../interfaces/curve/IStableSwapExchange.sol";
 import "../interfaces/liquity/IPriceFeed.sol";
 import "../interfaces/liquity/IStabilityPool.sol";
 import "../interfaces/uniswap/ISwapRouter.sol";
+import "../interfaces/weth/IWETH9.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
@@ -42,8 +43,8 @@ contract Strategy is BaseStrategy {
         IStableSwapExchange(0xEd279fDD11cA84bEef15AF5D39BB4d4bEE23F0cA);
 
     // Wrapped Ether - Used for swaps routing
-    IERC20 internal constant WETH =
-        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IWETH9 internal constant WETH =
+        IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     // DAI - Used for swaps routing
     IERC20 internal constant DAI =
@@ -52,12 +53,22 @@ contract Strategy is BaseStrategy {
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
     bool public convertDAItoLUSDonCurve;
 
+    // Allow changing fees to take advantage of cheaper or more liquid Uniswap pools
+    uint24 public lqtyToEthFee;
+    uint24 public ethToDaiFee;
+    uint24 public daiToLusdFee;
+
     constructor(address _vault) public BaseStrategy(_vault) {
         // Use curve as default route to swap DAI for LUSD
         convertDAItoLUSDonCurve = true;
 
         // Set health check to health.ychad.eth
         healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
+
+        // Set default pools to use on Uniswap
+        lqtyToEthFee = 3000;
+        ethToDaiFee = 500;
+        daiToLusdFee = 500;
     }
 
     // Strategy should be able to receive ETH
@@ -73,12 +84,29 @@ contract Strategy is BaseStrategy {
         require(sent); // dev: could not send ether to governance
     }
 
+    // Allow governance to wrap any outstanding ETH balance
+    function wrapETH() external onlyGovernance {
+        WETH.deposit{value: address(this).balance}();
+    }
+
     // Switch between Uniswap v3 (low liquidity) and Curve to convert DAI->LUSD
     function setConvertDAItoLUSDonCurve(bool _convertDAItoLUSDonCurve)
         external
         onlyEmergencyAuthorized
     {
         convertDAItoLUSDonCurve = _convertDAItoLUSDonCurve;
+    }
+
+    // Take advantage of cheaper Uniswap pools
+    // Setting a non-existent pool will cause the swap operation to revert
+    function setSwapFees(
+        uint24 _lqtyToEthFee,
+        uint24 _ethToDaiFee,
+        uint24 _daiToLusdFee
+    ) external onlyEmergencyAuthorized {
+        lqtyToEthFee = _lqtyToEthFee;
+        ethToDaiFee = _ethToDaiFee;
+        daiToLusdFee = _daiToLusdFee;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -304,10 +332,10 @@ contract Strategy is BaseStrategy {
 
         bytes memory path =
             abi.encodePacked(
-                address(LQTY), // LQTY-ETH 0.3%
-                uint24(3000),
-                address(WETH), // ETH-DAI 0.3%
-                uint24(3000),
+                address(LQTY), // LQTY-ETH
+                lqtyToEthFee,
+                address(WETH), // ETH-DAI
+                ethToDaiFee,
                 address(DAI)
             );
 
@@ -327,7 +355,7 @@ contract Strategy is BaseStrategy {
             ISwapRouter.ExactInputSingleParams(
                 address(WETH), // tokenIn
                 address(DAI), // tokenOut
-                3000, // 0.3% fee
+                ethToDaiFee, // ETH-DAI fee
                 address(this), // recipient
                 now, // deadline
                 address(this).balance, // amountIn
@@ -352,18 +380,11 @@ contract Strategy is BaseStrategy {
 
         _checkAllowance(address(curvePool), DAI, daiBalance);
 
-        // DAI is underlying index 1 - LUSD is 0
-        uint256 expectedDy = curvePool.get_dy_underlying(1, 0, daiBalance);
-
-        // As a safety measure expect to receive at least 95% of the underlying
-        // We can always switch back to Uniswap as a fallback if this cannot be honored
-        // poolpi's comment: Since get_dy_underlying is manipulable through flash-loan,
-        // doing a non 0 min out is unneeded.
         curvePool.exchange_underlying(
-            1,
-            0,
-            daiBalance,
-            expectedDy.mul(95).div(100)
+            1, // from DAI index
+            0, // to LUSD index
+            daiBalance, // amount
+            0 // minDy - run through flashbots! :)
         );
     }
 
@@ -374,7 +395,7 @@ contract Strategy is BaseStrategy {
             ISwapRouter.ExactInputSingleParams(
                 address(DAI), // tokenIn
                 address(want), // tokenOut
-                500, // 0.05% fee
+                daiToLusdFee, // DAI-LUSD fee
                 address(this), // recipient
                 now, // deadline
                 DAI.balanceOf(address(this)), // amountIn
