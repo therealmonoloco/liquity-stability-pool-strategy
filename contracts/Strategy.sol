@@ -378,11 +378,12 @@ contract Strategy is BaseStrategy {
         uint256 ethBalance = address(this).balance;
 
         // Balance * Price * Swap Percentage (adjusted to 18 decimals)
-        uint256 minExpected = ethBalance
-                                .mul(ethUSD)
-                                .mul(minExpectedSwapPercentage)
-                                .div(MAX_BPS)
-                                .div(1e18);
+        uint256 minExpected =
+            ethBalance
+                .mul(ethUSD)
+                .mul(minExpectedSwapPercentage)
+                .div(MAX_BPS)
+                .div(1e18);
 
         ISwapRouter.ExactInputSingleParams memory params =
             ISwapRouter.ExactInputSingleParams(
