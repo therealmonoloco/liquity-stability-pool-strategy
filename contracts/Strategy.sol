@@ -74,7 +74,7 @@ contract Strategy is BaseStrategy {
 
         // Set default pools to use on Uniswap
         lqtyToEthFee = 3000;
-        ethToDaiFee = 500;
+        ethToDaiFee = 3000;
         daiToLusdFee = 500;
 
         // Allow 1% slippage by default

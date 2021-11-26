@@ -28,7 +28,7 @@ def test_set_swap_fees_acl(
 ):
     # Check default swap fees
     assert strategy.lqtyToEthFee() == 3000  # 0.3% pool
-    assert strategy.ethToDaiFee() == 500  # 0.05% pool
+    assert strategy.ethToDaiFee() == 3000  # 0.3% pool
     assert strategy.daiToLusdFee() == 500  # 0.05% pool
 
     strategy.setSwapFees(100, 200, 300, {"from": gov})
