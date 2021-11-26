@@ -1,12 +1,34 @@
 from brownie import reverts, Wei
 
 
+def test_set_min_expected_swap_percentage_acl(
+    strategy, gov, strategist, management, keeper, guardian, user
+):
+    strategy.setMinExpectedSwapPercentage(1, {"from": gov})
+    assert strategy.minExpectedSwapPercentage() == 1
+
+    strategy.setMinExpectedSwapPercentage(2, {"from": strategist})
+    assert strategy.minExpectedSwapPercentage() == 2
+
+    strategy.setMinExpectedSwapPercentage(3, {"from": management})
+    assert strategy.minExpectedSwapPercentage() == 3
+
+    strategy.setMinExpectedSwapPercentage(4, {"from": guardian})
+    assert strategy.minExpectedSwapPercentage() == 4
+
+    with reverts():
+        strategy.setMinExpectedSwapPercentage(5, {"from": keeper})
+
+    with reverts():
+        strategy.setMinExpectedSwapPercentage(6, {"from": user})
+
+
 def test_set_swap_fees_acl(
     strategy, gov, strategist, management, keeper, guardian, user
 ):
     # Check default swap fees
     assert strategy.lqtyToEthFee() == 3000  # 0.3% pool
-    assert strategy.ethToDaiFee() == 500  # 0.05% pool
+    assert strategy.ethToDaiFee() == 3000  # 0.3% pool
     assert strategy.daiToLusdFee() == 500  # 0.05% pool
 
     strategy.setSwapFees(100, 200, 300, {"from": gov})
@@ -106,6 +128,16 @@ def test_eth_to_dai_with_invalid_fee_reverts(test_strategy, accounts, weth):
         test_strategy.sellETHforDAI()
 
 
+def test_eth_to_dai_with_no_slippage_reverts(test_strategy, accounts, weth, dai):
+    accounts.at(weth, force=True).transfer(test_strategy, Wei("100 ether"))
+
+    # Set min expected swap to 102% of current chainlink price
+    test_strategy.setMinExpectedSwapPercentage(10200)
+
+    with reverts():
+        test_strategy.sellETHforDAI()
+
+
 def test_eth_to_dai_swap(test_strategy, accounts, weth, dai):
     assert test_strategy.totalETHBalance() == 0
     assert test_strategy.totalLQTYBalance() == 0
@@ -134,6 +166,22 @@ def test_dai_to_lusd_with_invalid_fee_reverts(test_strategy, dai, dai_whale, lus
         test_strategy.sellDAIforLUSD()
 
 
+def test_dai_to_lusd_swap_on_uniswap_with_no_slippage_reverts(
+    test_strategy, dai, dai_whale, lusd
+):
+    test_strategy.setConvertDAItoLUSDonCurve(
+        False, {"from": test_strategy.strategist()}
+    )
+
+    # Set min expected swap to 105% of balance
+    test_strategy.setMinExpectedSwapPercentage(10500)
+
+    dai.transfer(test_strategy, 1_000 * (10 ** dai.decimals()), {"from": dai_whale})
+
+    with reverts():
+        test_strategy.sellDAIforLUSD()
+
+
 def test_dai_to_lusd_swap_on_uniswap(test_strategy, dai, dai_whale, lusd):
     test_strategy.setConvertDAItoLUSDonCurve(
         False, {"from": test_strategy.strategist()}
@@ -149,6 +197,20 @@ def test_dai_to_lusd_swap_on_uniswap(test_strategy, dai, dai_whale, lusd):
 
     assert lusd.balanceOf(test_strategy) > 0
     assert dai.balanceOf(test_strategy) == 0
+
+
+def test_dai_to_lusd_swap_on_curve_with_no_slippage_reverts(
+    test_strategy, dai, dai_whale, lusd
+):
+    test_strategy.setConvertDAItoLUSDonCurve(True, {"from": test_strategy.strategist()})
+
+    # Set min expected swap to 105% of balance
+    test_strategy.setMinExpectedSwapPercentage(10500)
+
+    dai.transfer(test_strategy, 1_000 * (10 ** dai.decimals()), {"from": dai_whale})
+
+    with reverts():
+        test_strategy.sellDAIforLUSD()
 
 
 def test_dai_to_lusd_swap_on_curve(test_strategy, dai, dai_whale, lusd):

@@ -58,6 +58,13 @@ contract Strategy is BaseStrategy {
     uint24 public ethToDaiFee;
     uint24 public daiToLusdFee;
 
+    // Minimum expected output when swapping
+    // This should be relative to MAX_BPS representing 100%
+    uint256 public minExpectedSwapPercentage;
+
+    // 100%
+    uint256 internal constant MAX_BPS = 10000;
+
     constructor(address _vault) public BaseStrategy(_vault) {
         // Use curve as default route to swap DAI for LUSD
         convertDAItoLUSDonCurve = true;
@@ -67,8 +74,11 @@ contract Strategy is BaseStrategy {
 
         // Set default pools to use on Uniswap
         lqtyToEthFee = 3000;
-        ethToDaiFee = 500;
+        ethToDaiFee = 3000;
         daiToLusdFee = 500;
+
+        // Allow 1% slippage by default
+        minExpectedSwapPercentage = 9900;
     }
 
     // Strategy should be able to receive ETH
@@ -107,6 +117,17 @@ contract Strategy is BaseStrategy {
         lqtyToEthFee = _lqtyToEthFee;
         ethToDaiFee = _ethToDaiFee;
         daiToLusdFee = _daiToLusdFee;
+    }
+
+    // Ideally we would receive fair market value by performing every swap
+    // through Flashbots. However, since we may be swapping capital and not
+    // only profits, it is important to do our best to avoid bad swaps or
+    // sandwiches in case we end up in an uncle block.
+    function setMinExpectedSwapPercentage(uint256 _minExpectedSwapPercentage)
+        external
+        onlyEmergencyAuthorized
+    {
+        minExpectedSwapPercentage = _minExpectedSwapPercentage;
     }
 
     // Wrapper around `provideToSP` to allow forcing a deposit externally
@@ -339,6 +360,8 @@ contract Strategy is BaseStrategy {
                 address(DAI)
             );
 
+        // Proceeds from LQTY are not subject to minExpectedSwapPercentage
+        // so they could get sandwiched if we end up in an uncle block
         router.exactInput(
             ISwapRouter.ExactInputParams(
                 path,
@@ -351,6 +374,17 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellETHforDAI() internal {
+        uint256 ethUSD = priceFeed.fetchPrice();
+        uint256 ethBalance = address(this).balance;
+
+        // Balance * Price * Swap Percentage (adjusted to 18 decimals)
+        uint256 minExpected =
+            ethBalance
+                .mul(ethUSD)
+                .mul(minExpectedSwapPercentage)
+                .div(MAX_BPS)
+                .div(1e18);
+
         ISwapRouter.ExactInputSingleParams memory params =
             ISwapRouter.ExactInputSingleParams(
                 address(WETH), // tokenIn
@@ -358,8 +392,8 @@ contract Strategy is BaseStrategy {
                 ethToDaiFee, // ETH-DAI fee
                 address(this), // recipient
                 now, // deadline
-                address(this).balance, // amountIn
-                0, // amountOut
+                ethBalance, // amountIn
+                minExpected, // amountOut
                 0 // sqrtPriceLimitX96
             );
 
@@ -368,6 +402,8 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellDAIforLUSD() internal {
+        // These methods will assume 1 DAI = 1 LUSD and attempt to enforce
+        // min output to be at least minExpectedSwapPercentage of balance
         if (convertDAItoLUSDonCurve) {
             _sellDAIforLUSDonCurve();
         } else {
@@ -384,12 +420,14 @@ contract Strategy is BaseStrategy {
             1, // from DAI index
             0, // to LUSD index
             daiBalance, // amount
-            0 // minDy - run through flashbots! :)
+            daiBalance.mul(minExpectedSwapPercentage).div(MAX_BPS) // minDy
         );
     }
 
     function _sellDAIforLUSDonUniswap() internal {
-        _checkAllowance(address(router), DAI, DAI.balanceOf(address(this)));
+        uint256 daiBalance = DAI.balanceOf(address(this));
+
+        _checkAllowance(address(router), DAI, daiBalance);
 
         ISwapRouter.ExactInputSingleParams memory params =
             ISwapRouter.ExactInputSingleParams(
@@ -398,8 +436,8 @@ contract Strategy is BaseStrategy {
                 daiToLusdFee, // DAI-LUSD fee
                 address(this), // recipient
                 now, // deadline
-                DAI.balanceOf(address(this)), // amountIn
-                0, // amountOut
+                daiBalance, // amountIn
+                daiBalance.mul(minExpectedSwapPercentage).div(MAX_BPS), // amountOut
                 0 // sqrtPriceLimitX96
             );
         router.exactInputSingle(params);
